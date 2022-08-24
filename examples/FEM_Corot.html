@@ -1,0 +1,794 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Finite Element Method (FEM) - Corotated Linear Elasticity Model</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Finite Element Method (FEM) - Corotated Linear Elasticity Model</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table>		
+				<col width="180" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Current time</label></td>
+					<td><span id="time">0.00</span> s</td>
+				</tr>
+				<tr>
+					<td><label>Time per sim. step</label></td>
+					<td><span id="timePerStep">0.00</span> ms</td>
+				</tr>
+				<tr>
+					<td><label># particles</label></td>
+					<td><span id="numParticles">0</span></td>
+				</tr>
+				<tr>
+					<td><label># elements</label></td>
+					<td><span id="numElements">0</span></td>
+				</tr>
+				<tr>
+					<td><label for="widthInput">Width</label></td>
+					<td><input onchange="gui.restart()" id="widthInput" type="number" value="40" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="heightInput">Height</label></td>
+					<td><input onchange="gui.restart()" id="heightInput" type="number" value="30" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="fixedParticlesInput"># fixed particles</label></td>
+					<td><select onchange="gui.restart()" id="fixedParticlesInput">
+					  <option value="1">1</option>
+					  <option value="2" selected="selected">2</option>
+					  <option value="4">4</option>
+					</select></td>
+				</tr>
+				<tr>
+					<td><label for="timeStepSizeInput">Time step size</label></td>
+					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.001" step="0.001"></td>
+				</tr>
+				<tr>
+					<td><label for="youngsModulusInput">Young's modulus</label></td>
+					<td><input onchange="gui.sim.youngsModulus=parseFloat(value); gui.sim.updateLameParameters()" id="youngsModulusInput" type="number" value="500000.0" step="1.0"></td>
+				</tr>
+				<tr>
+					<td><label for="poissonRatioInput">Poisson ratio</label></td>
+					<td><input onchange="gui.sim.poissonRatio=parseFloat(value); gui.sim.updateLameParameters()" id="poissonRatioInput" type="number" value="0.3" step="0.1"></td>
+				</tr>
+				<tr>
+					<td><label for="dampingInput">Simple damping</label></td>
+					<td><input onchange="gui.sim.damping=parseFloat(value)" id="dampingInput" type="number" value="0.001" step="0.001"></td>
+				</tr>
+				<tr>
+					<td><label for="gravityInput">Gravity</label></td>
+					<td><input onchange="gui.sim.gravity=parseFloat(value)" id="gravityInput" type="number" value="-9.81" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="densityInput">Density</label></td>
+					<td><input onchange="gui.sim.density=parseFloat(value)" id="densityInput" type="number" value="500.0" step="1.0"></td>
+				</tr>
+				<tr>
+					<td><label for="renderStress">Visualize stress</label></td>
+					<td><input onchange="gui.renderStress=this.checked" id="renderStress" type="checkbox"></td>
+				</tr>
+				<tr>
+					<td><label for="maxStressInput">Max. stress value</label></td>
+					<td><input onchange="gui.maxStress=parseFloat(value)" id="maxStressInput" type="number" value="1000000.0" step="1.0"></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>FEM algorithm:</h2>
+				This example shows a finite element simulation using the corotated linear elasticity model with triangular elements [SB12]:
+				<ol>
+					<li>compute deformation gradient for each element</li>
+					<li>extract rotation from deformation gradient for each element</li>
+					<li>compute Piola-Kirchhoff stress tensor for each element</li>
+					<li>compute elastic forces</li>
+					<li>time integration to get new positions and velocities</li>
+				</ol>
+				
+				Note that the simulation is only conditionally stable since a conditionally stable explicit time integration method is used and that inverted elements are not handled. 
+				
+			<h3>1. Compute deformation gradient</h3>
+			
+				<p>The deformation gradient is defined as 
+				$$\mathbf F = \frac{\partial \mathbf x(\mathbf X,t)}{\partial \mathbf X},$$
+				where $\mathbf X$ defines the reference configuration and $\mathbf x$ the deformed configuration of a body. </p>
+				
+				<p>In this example we use linear triangular elements. The deformation gradient for such an element with the vertices $\mathbf x_1$, $\mathbf x_2$ and $\mathbf x_3$ is determined by
+				$$\mathbf F = \mathbf D_s \mathbf D_m^{-1},$$
+				where $\mathbf D_s$ is the deformed shape matrix and $\mathbf D_m$ the constant reference shape matrix defined as
+				$$\begin{align*}
+					\mathbf D_s &= (\mathbf x_1 - \mathbf x_3 \quad \mathbf x_2 - \mathbf x_3) \\
+					\mathbf D_m &= (\mathbf X_1 - \mathbf X_3 \quad \mathbf X_2 - \mathbf X_3).
+				\end{align*}$$
+				Note that $\mathbf D_m^{-1}$ can be precomputed. 
+				</p>
+				
+			<h3>2. Extract rotation</h3>
+			
+				<p>To extract the rotational part from the deformation gradient, a polar decomposition is performed
+				$$\mathbf F = \mathbf R \mathbf S$$
+				where $\mathbf R$ is an orthogonal matrix and $\mathbf S$ a symmetric matrix. If the element is not inverted, $\mathbf R$ is a rotation matrix. Otherwise $\mathbf R$ contains a reflection.</p>
+				
+			<h3>3. Compute Piola-Kirchhoff stress tensor</h3>
+				
+				<p>In this example we use the corotated linear elasticity constitutive model which defines the Piola-Kirchhoff stress tensor as
+				$$\mathbf P (\mathbf F) = 2 \mu (\mathbf F - \mathbf R) + \lambda \text{tr}(\mathbf R^T \mathbf F - \mathbf I) \mathbf R,$$
+				where $\mu$ and $\lambda$ are the Lamé parameters. These parameters are related to the Young’s modulus $k$ (measure of stretch resistance) and the Poisson’s ratio $\nu$ (measure of incompressibility) as:
+				$$\mu = \frac{k}{2 (1 + \nu)}, \quad\quad \lambda = \frac{k \nu}{(1+\nu)(1 - 2\nu)}.$$
+				</p>
+								
+			<h3>4. Compute elastic forces</h3>
+			
+				<p>Finally, the elastic forces for the three nodes of our linear triangular elements can be computed as the negative gradients of the strain energy which yields
+				$$\begin{align*}
+				 \left [  \mathbf f_1 \quad  \mathbf f_2 \right ] &= -A \mathbf P(\mathbf F) \mathbf D_m^{-T} \\
+				 \mathbf f_3 &= -\sum_{i=1}^2 \mathbf f_i,
+				\end{align*}$$
+				where $A$ is the area of the triangular element in rest configuration and $\mathbf D_m^{-T}$ is the inverted and transposed the reference shape matrix. 
+			
+			<h3>2. Time integration</h3>
+				Finally, the particles are advected by numerical time integration. In our case we use a symplectic Euler method:
+				$$\begin{align*}
+					\mathbf v(t + \Delta t) &= \mathbf v(t) + \frac{\Delta t}{m} \left (\mathbf f(t) + \mathbf f^{\text{ext}}(t) \right ) \\
+					\mathbf x(t + \Delta t) &= \mathbf x(t) + \Delta t \mathbf v(t + \Delta t),
+				\end{align*}$$
+				where $\mathbf f^{\text{ext}}$ are the external forces.
+				
+			<h3>References</h3>
+			<ul>
+				<li>[SB12] Eftychios Sifakis, Jernej Barbic. FEM Simulation of 3D Deformable Solids. ACM SIGGRAPH Courses, 2012</li>
+			</ul>
+			
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Particle 
+	{
+		constructor (x, y) 
+		{
+			// mass
+			this.m = 1.0;
+			// reference coordinates
+			this.X = x;
+			this.Y = y;
+			// current coordinates
+			this.x = x;
+			this.y = y;
+			this.fx = 0.0;
+			this.fy = 0.0;
+			this.vx = 0.0;
+			this.vy = 0.0;
+		}
+	}
+	
+	class TriangularElement 
+	{
+		constructor (index1, index2, index3, restLength) 
+		{
+			this.index1 = index1;
+			this.index2 = index2;
+			this.index3 = index3;
+			this.area = 0.0;					// area of the triangular element
+			this.Dm_inv = [[0,0],[0,0]]; 		// matrix D_m^-1
+			this.F = [[0,0],[0,0]]; 			// deformation gradient
+			this.R = [[0,0],[0,0]]; 			// rotation matrix
+			this.P = [[0,0],[0,0]]; 			// Piola-Kirchhoff stress tensor
+		}
+	}
+	
+	class Simulation
+	{
+		constructor(width, height, fixed)
+		{
+			this.elements = [];
+			this.particles = [];
+			this.width = width;
+			this.height = height;
+			this.stiffness = 0.2;
+			this.damping = 5.0;
+			this.density = 500.0;
+			this.gravity = -9.81;
+			this.timeStepSize = 0.005;
+			this.damping = 0.001;
+			this.time = 0;
+			this.numFixedParticles = fixed;
+			
+			this.youngsModulus = 500000.0;
+			this.poissonRatio = 0.3;
+			this.updateLameParameters();
+
+			this.init();
+		}
+		
+		init()
+		{			
+			// create particles  
+			let i;
+			let j;
+			let w = this.width;
+			let h = this.height;
+			let s = 0.2;
+			for (i = 0; i < h; i++) 
+				for (j = 0; j < w; j++) 
+					this.particles.push(new Particle(s*(j-w/2+0.5), -s*i))
+			
+			// create triangular elements
+			for (i = 0; i < h - 1; i++)
+			{
+				for (j = 0; j < w - 1; j++)
+				{
+					let helper = 0;
+					if (i % 2 == j % 2)
+						helper = 1;
+					
+					this.elements.push(new TriangularElement(i*w + j, (i + 1)*w + j + helper, i*w + j + 1));
+					this.elements.push(new TriangularElement((i + 1)*w + j + 1, i*w + j + 1 - helper, (i + 1)*w + j));
+				}
+			}
+			
+			this.computeAreasAndMasses();
+			this.computeDmInv();
+		}
+		
+		// compute Lamé parameters mu and lambda from Young's modulus and Poisson ratio 
+		updateLameParameters()
+		{
+			this.mu = this.youngsModulus / 2.0 / (1.0 + this.poissonRatio);
+			this.lambda = this.youngsModulus * this.poissonRatio / (1.0 + this.poissonRatio) / (1.0 - 2.0 * this.poissonRatio);
+		}
+		
+		// perform a 2D polar decomposition
+		polarDecomposition(M)
+		{
+			// determinant
+			let det = M[0][0]*M[1][1] - M[0][1]*M[1][0];
+			
+			let R = [[0,0],[0,0]];
+			if (det >= 0.00001)
+			{
+				R[0][0] = M[0][0] + M[1][1];
+				R[0][1] = M[0][1] - M[1][0];
+				R[1][0] = M[1][0] - M[0][1];
+				R[1][1] = M[1][1] + M[0][0];
+			}
+			else
+			{
+				R[0][0] = M[0][0] - M[1][1];
+				R[0][1] = M[0][1] + M[1][0];
+				R[1][0] = M[1][0] + M[0][1];
+				R[1][1] = M[1][1] - M[0][0];
+			}
+
+			let dl1 = R[1][0]*R[1][0] + R[0][0]*R[0][0];
+			let dl2 = R[1][1]*R[1][1] + R[0][1]*R[0][1];
+
+			if ((dl1 < 1.0e-12) || (dl2 < 1.0e-12))
+			{
+				R = [[1,0], [0,1]];
+				return R;
+			}
+
+			let l1 = 1.0/Math.sqrt(dl1);
+			let l2 = 1.0/Math.sqrt(dl2);
+
+			R[0][0] *= l1;
+			R[1][0] *= l1;
+			R[0][1] *= l2;
+			R[1][1] *= l2;
+			return R;
+		}
+		
+		// compute the areas of all triangular elements in rest configuration
+		// and the masses of all particles 
+		computeAreasAndMasses()
+		{
+			// set masses to zero
+			for (let i = 0; i < this.particles.length; i++)
+			{
+				let p = this.particles[i];
+				p.m = 0.0;
+			}
+			
+			for (let i = 0; i < this.elements.length; i++) 
+			{
+				// triangle indices
+				var i1 = this.elements[i].index1;
+				var i2 = this.elements[i].index2;
+				var i3 = this.elements[i].index3;
+				
+				// vertices of triangle
+				let p1 = this.particles[i1];
+				let p2 = this.particles[i2];
+				let p3 = this.particles[i3];
+						
+				this.elements[i].area = (0.5 * (p2.X-p1.X)*(p3.Y-p1.Y) - (p3.X-p1.X)*(p2.Y-p1.Y));
+				
+				let elementMass = this.density * this.elements[i].area;
+				p1.m += 1.0/3.0 * elementMass;
+				p2.m += 1.0/3.0 * elementMass;
+				p3.m += 1.0/3.0 * elementMass;
+			}
+		}
+		
+		// determine matrix Dm^-1 for each triangle which is required
+		// to compute the deformation gradient F = Ds * Dm^-1
+		computeDmInv()
+		{
+			for (let i = 0; i < this.elements.length; i++) 
+			{
+				// triangle indices
+				var i1 = this.elements[i].index1;
+				var i2 = this.elements[i].index2;
+				var i3 = this.elements[i].index3;
+				
+				// vertices of triangle
+				let p1 = this.particles[i1];
+				let p2 = this.particles[i2];
+				let p3 = this.particles[i3];
+						
+				// matrix D_m = [[a, b], [c, d]]
+				let a = p1.X - p3.X;
+				let b = p2.X - p3.X;
+				let c = p1.Y - p3.Y;
+				let d = p2.Y - p3.Y;
+				
+				// determinant
+				let det = a*d - b*c;
+				
+				// inverse of D_m
+				this.elements[i].Dm_inv = [[d/det, -b/det], [-c/det, a/det]];
+			}
+		}
+	
+		
+		isActive(i)
+		{
+			// particle 0 and the selected particle are fixed
+			if (this.numFixedParticles == 1)
+				return (i != 0) && (i != gui.selectedParticle);
+			else if (this.numFixedParticles == 2)
+				return (i != 0) && (i != this.width-1) && (i != gui.selectedParticle);
+			else 
+				return (i != 0) && (i != this.width-1) && (i != (this.height-1)*this.width) && (i != this.height*this.width-1) && (i != gui.selectedParticle);
+		}
+		
+		matrixMult(A, B)
+		{
+			return [[A[0][0]*B[0][0] + A[0][1]*B[1][0], A[0][0]*B[0][1] + A[0][1]*B[1][1]], 
+					[A[1][0]*B[0][0] + A[1][1]*B[1][0], A[1][0]*B[0][1] + A[1][1]*B[1][1]]];
+		}
+		
+		matrixNorm(A)
+		{
+			return Math.sqrt(A[0][0]*A[0][0] + A[0][1]*A[1][0] + A[1][0]*A[1][0]+ A[1][1]*A[1][1]);
+		}
+		
+		transpose(A)
+		{
+			return [[A[0][0], A[1][0]], 
+					[A[0][1], A[1][1]]];
+		}
+		
+		// compute the deformation gradient for all elements
+		computeDeformationGradient()
+		{
+			for (let i = 0; i < this.elements.length; i++) 
+			{
+				let e = this.elements[i];
+				
+				// vertices of triangle
+				let p1 = this.particles[e.index1];
+				let p2 = this.particles[e.index2];
+				let p3 = this.particles[e.index3];
+				
+				// matrix D_s 
+				let D_s = [[p1.x - p3.x, p2.x - p3.x], 
+						   [p1.y - p3.y, p2.y - p3.y]];
+				
+				// F = D_s * D_m^-1
+				e.F = this.matrixMult(D_s, e.Dm_inv);	
+		   }
+		}
+		
+		// extract the rotation for each deformation gradient
+		computeRotationMatrices()
+		{
+			for (let i = 0; i < this.elements.length; i++) 
+			{
+				let e = this.elements[i];				
+				e.R = this.polarDecomposition(e.F);
+		   }
+		}
+			
+		// compute the Piola-Kirchhoff stress tensor using the corotated linear elasticity model
+		computePiolaKirchhoffStress()
+		{
+			for (let i = 0; i < this.elements.length; i++) 
+			{
+				let e = this.elements[i];
+				
+				// P(F) = 2 mu (F − R) + lambda tr(RT F − I)R
+				
+				// upper left entry of matrix R^T F
+				let RT_F_00 = e.R[0][0] * e.F[0][0] + e.R[1][0] * e.F[1][0];
+				let RT_F_11 = e.R[0][1] * e.F[0][1] + e.R[1][1] * e.F[1][1];
+				let trace = RT_F_00 + RT_F_11 - 2.0; 	// tr(RT F − I)
+				let ltrace = this.lambda*trace;
+				let m = 2.0 * this.mu;
+				e.P = 	[[m * (e.F[0][0]-e.R[0][0]) + ltrace*e.R[0][0], m * (e.F[0][1]-e.R[0][1]) + ltrace*e.R[0][1]], 
+					     [m * (e.F[1][0]-e.R[1][0]) + ltrace*e.R[1][0], m * (e.F[1][1]-e.R[1][1]) + ltrace*e.R[1][1]]];			
+			}
+		}
+		
+		computeForces()
+		{
+			// reset forces
+			for (let i = 0; i < this.particles.length; i++)
+			{
+				let p = this.particles[i];
+				p.fx = 0.0;
+				p.fy = 0.0;
+			}
+			
+			this.computeDeformationGradient();
+			this.computeRotationMatrices();
+			this.computePiolaKirchhoffStress();
+			
+			for (let i = 0; i < this.elements.length; i++) 
+			{
+				let e = this.elements[i];
+				
+				// D_m^-1 transposed
+				let Dm_inv_T = this.transpose(e.Dm_inv);
+				let H = this.matrixMult(e.P, Dm_inv_T);
+				
+				// vertices of triangle
+				let p1 = this.particles[e.index1];
+				let p2 = this.particles[e.index2];
+				let p3 = this.particles[e.index3];
+				
+				p1.fx -= e.area * H[0][0];
+				p1.fy -= e.area * H[1][0];
+				
+				p2.fx -= e.area * H[0][1];
+				p2.fy -= e.area * H[1][1];
+				
+				p3.fx += e.area * H[0][0] + e.area * H[0][1];
+				p3.fy += e.area * H[1][0] + e.area * H[1][1];	
+			}
+		}
+		
+		
+		// simulation step
+		simulationStep()
+		{	
+			let dt = this.timeStepSize;
+					
+			this.computeForces();
+		
+			// compute preview using symplectic Euler
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				if (this.isActive(i))
+				{
+					let p = this.particles[i];
+					
+					// integrate velocity considering gravitational acceleration and spring forces 
+					p.vx = p.vx + dt * p.fx / p.m;
+					p.vy = p.vy + dt * (p.fy / p.m + this.gravity);
+					
+					// apply simple damping => reduce velocity by a user-defined factor
+					p.vx *= (1.0 - this.damping);
+					p.vy *= (1.0 - this.damping);
+				
+					// integrate position
+					p.x = p.x + dt * p.vx;
+					p.y = p.y + dt * p.vy;
+				}
+			}
+			
+			// update simulation time
+			this.time = this.time + dt;
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2-200};
+			this.zoom = 50;
+			this.particleRadius = 0.025;
+			this.selectedParticle = -1;
+			this.renderStress = false;
+			this.maxStress = 1000000.0;
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			let w = parseInt(document.getElementById('widthInput').value);
+			let h = parseInt(document.getElementById('heightInput').value);
+			let f = parseInt(document.getElementById('fixedParticlesInput').value);
+			delete this.sim;
+			this.sim = new Simulation(w, h, f);
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+
+			this.sim.youngsModulus = parseFloat(document.getElementById('youngsModulusInput').value);
+			this.sim.poissonRatio = parseFloat(document.getElementById('poissonRatioInput').value);
+			this.sim.damping = parseFloat(document.getElementById('dampingInput').value);
+			this.sim.updateLameParameters();
+			this.sim.gravity = parseFloat(document.getElementById('gravityInput').value);
+			this.sim.timeStepSize = parseFloat(document.getElementById('timeStepSizeInput').value);
+			this.sim.density = parseFloat(document.getElementById('densityInput').value);
+			this.maxStress = parseFloat(document.getElementById('maxStressInput').value);
+			this.renderStress = document.getElementById('renderStress').checked;
+			
+			document.getElementById("numParticles").innerHTML = this.sim.particles.length;
+			document.getElementById("numElements").innerHTML = this.sim.elements.length;
+			this.mainLoop();
+		}
+		
+		drawCoordinateSystem()
+		{
+			// draw x-axis
+			this.c.strokeStyle = "#FF0000";
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x+1*this.zoom, this.origin.y);
+			this.c.stroke();	
+
+			// draw y-axis
+			this.c.strokeStyle = "#00FF00";	
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x, this.origin.y-1*this.zoom);
+			this.c.stroke();		
+		}
+		
+		numToHex(n) 
+		{ 
+			let hex = Number(n).toString(16);
+			if (hex.length < 2)
+			   hex = "0" + hex;
+			return hex;
+		}
+		
+		hsvToRgb(h, s, v)
+		{
+			let i = Math.floor(h * 6);
+			let f = h * 6 - i;
+			let p = v * (1 - s);
+			let q = v * (1 - f * s);
+			let t = v * (1 - (1 - f) * s);
+
+			let 	r = 0;
+			let 	g = 0;
+			let 	b = 0;
+			switch (i % 6)
+			{
+				case 0: r = v, g = t, b = p; break;
+				case 1: r = q, g = v, b = p; break;
+				case 2: r = p, g = v, b = t; break;
+				case 3: r = p, g = q, b = v; break;
+				case 4: r = t, g = p, b = v; break;
+				case 5: r = v, g = p, b = q; break;
+			}
+			let rh = this.numToHex(Math.round(r * 255));
+			let gh = this.numToHex(Math.round(g * 255));
+			let bh = this.numToHex(Math.round(b * 255));
+			//console.log(rh)
+			return "#" + rh + gh + bh;
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			
+			this.drawCoordinateSystem();
+			
+			// draw springs as lines
+			this.c.strokeStyle = "#666666";
+			for (let i = 0; i < this.sim.elements.length; i++) 
+			{
+				let index1 = this.sim.elements[i].index1;
+				let index2 = this.sim.elements[i].index2;
+				let index3 = this.sim.elements[i].index3;
+				let p1 = this.sim.particles[index1];
+				let p2 = this.sim.particles[index2];
+				let p3 = this.sim.particles[index3];
+				
+				if (this.renderStress)
+				{
+					let P = this.sim.elements[i].P;
+					let normP = this.sim.matrixNorm(P) / this.maxStress;
+					normP = Math.min(0.666, normP);
+					this.c.fillStyle = this.hsvToRgb(0.666-normP, 1.0, 1.0);
+				}
+								
+				this.c.beginPath();
+				this.c.moveTo(this.origin.x + p1.x*this.zoom, this.origin.y - p1.y*this.zoom);
+				this.c.lineTo(this.origin.x + p2.x*this.zoom, this.origin.y - p2.y*this.zoom);
+				this.c.lineTo(this.origin.x + p3.x*this.zoom, this.origin.y - p3.y*this.zoom);
+				this.c.lineTo(this.origin.x + p1.x*this.zoom, this.origin.y - p1.y*this.zoom);
+				if (this.renderStress)
+					this.c.fill();	
+				else 
+					this.c.stroke();
+			}
+			
+			// draw particles as circles
+			for (let i = 0; i < this.sim.particles.length; i++) 
+			{
+				let p = this.sim.particles[i];
+				let r = this.particleRadius;
+				if (i == this.selectedParticle)
+				{
+					// draw selected particle in red with larger radius
+					this.c.fillStyle = "#FF0000";	
+					r = 3*r;
+				}
+				else 
+					this.c.fillStyle = "#0000FF";	
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+			}
+		}
+		
+		mainLoop()
+		{
+			// perform multiple sim steps per render step
+			for (let i=0; i < 8; i++)
+			{
+				let t0 = performance.now();
+				
+				this.sim.simulationStep();
+
+				let t1 = performance.now();
+				this.timeSum += t1 - t0;
+				this.counter += 1;
+					
+				if (this.counter % 50 == 0)				
+				{
+					this.timeSum /= this.counter;
+					document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(2);		
+					this.timeSum = 0.0;
+					this.counter = 0;
+				}	
+				document.getElementById("time").innerHTML = this.sim.time.toFixed(2);	
+			}			
+
+			this.draw();
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+		}
+		
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+		
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);
+				for (let i = 0; i < this.sim.particles.length; i++) 
+				{
+					let p = this.sim.particles[i];
+					let px = this.origin.x + p.x * this.zoom;
+					let py = this.origin.y - p.y * this.zoom;
+					let dx = px - mousePos.x
+					let dy = py - mousePos.y
+					let dist2 = Math.sqrt(dx * dx + dy * dy)
+					if (dist2 < 10)
+					{
+						this.selectedParticle = i;
+						break;
+					}				
+				}			
+			}
+		}
+		
+		getMousePos(canvas, event) 
+		{
+			let rect = canvas.getBoundingClientRect();
+			return {
+				x: event.clientX - rect.left,
+				y: event.clientY - rect.top
+			};
+		}
+	
+		mouseMove(event)
+		{
+			if (this.selectedParticle != -1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);		
+				this.sim.particles[this.selectedParticle].x = (mousePos.x - this.origin.x) / this.zoom;
+				this.sim.particles[this.selectedParticle].y = -(mousePos.y - this.origin.y) / this.zoom;
+			}
+		}
+		
+		mouseUp(event) 
+		{
+			this.selectedParticle = -1;
+		}
+		
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+		}
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>

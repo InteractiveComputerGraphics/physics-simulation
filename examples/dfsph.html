@@ -1,0 +1,1157 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Divergence-Free SPH (DFSPH)</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Divergence-Free SPH (DFSPH)</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table>		
+				<col width="200" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Current time</label></td>
+					<td><span id="time">0.00</span> s</td>
+				</tr>
+				<tr>
+					<td><label>Time per sim. step</label></td>
+					<td><span id="timePerStep">0.00</span> ms</td>
+				</tr>
+				<tr>
+					<td><label>Required iterations (rho)</label></td>
+					<td><span id="iterations">0</span></td>
+				</tr>
+				<tr>
+					<td><label>Required iterations (div v)</label></td>
+					<td><span id="iterationsV">0</span></td>
+				</tr>
+				<tr>
+					<td><label># particles</label></td>
+					<td><span id="numParticles">0</span></td>
+				</tr>
+				<tr>
+					<td><label for="widthInput">Width</label></td>
+					<td><input onchange="gui.restart()" id="widthInput" type="number" value="30" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="heightInput">Height</label></td>
+					<td><input onchange="gui.restart()" id="heightInput" type="number" value="30" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="timeStepSizeInput">Time step size</label></td>
+					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.005" step="0.001"></td>
+				</tr>
+				<tr>
+					<td><label for="maxErrorInput">Max. density error (%)</label></td>
+					<td><input onchange="gui.sim.maxError=parseFloat(value)" id="maxErrorInput" type="number" value="0.1" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="maxErrorVInput">Max. divergence error (%)</label></td>
+					<td><input onchange="gui.sim.maxErrorV=parseFloat(value)" id="maxErrorVInput" type="number" value="0.5" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="iterationsInput">Max. iterations (rho)</label></td>
+					<td><input onchange="gui.sim.maxIterations=parseInt(value)" id="iterationsInput" type="number" value="100" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="iterationsVInput">Max. iterations (div v)</label></td>
+					<td><input onchange="gui.sim.maxIterationsV=parseInt(value)" id="iterationsVInput" type="number" value="100" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="viscosityInput">Viscosity</label></td>
+					<td><input onchange="gui.sim.viscosity=parseFloat(value)" id="viscosityInput" type="number" value="0.05" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="gravityInput">Gravity</label></td>
+					<td><input onchange="gui.sim.gravity=parseFloat(value)" id="gravityInput" type="number" value="-9.81" step="0.01"></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>DFSPH algorithm:</h2>
+			This example shows the DFSPH method introduced by Bender and Koschier [BK17]:
+			<ul>
+				<li>precomputation at time $t=0$:</li>
+				<ol>
+					<li>perform neighborhood search</li>
+					<li>compute particle densities $\rho_i$</li>
+					<li>compute diagonal matrix elements $a_{ii}$</li>
+				</ol>
+				<li>computation in each simulation step:</li>
+				<ol start="4">
+					<li>compute viscosity (XSPH)</li>
+					<li>integrate velocities only considering non-pressure forces </li>
+					<li>compute constant density source term</li>
+					<li class="nostyle"><b>loop</b></li>
+					<li style="margin-left:40px">compute pressure accelerations</li>
+					<li style="margin-left:40px">determine $\mathbf{A} \mathbf{p}$</li>
+					<li style="margin-left:40px">update pressure values</li>
+					<li>time integration with pressure forces (positions & velocities)</li>	
+					<li>$t := t + \Delta t$
+					<li>perform neighborhood search</li>
+					<li>compute particle densities $\rho_i$</li>
+					<li>compute diagonal matrix elements $a_{ii}$</li>
+					<li>compute divergence source term</li>
+					<li class="nostyle"><b>loop</b></li>
+					<li style="margin-left:40px">compute pressure accelerations</li>
+					<li style="margin-left:40px">determine $\mathbf{A} \mathbf{p}$</li>
+					<li style="margin-left:40px">update pressure values</li>
+					<li>time integration with pressure forces (only velocities)</li>	
+				</ol>				
+			</ul>
+			
+			<p>In each simulation step DFSPH first solves the pressure Poisson equation (PPE) for the constant density source term: 
+			$$\Delta t \nabla^2 p = \frac{\rho_0 - \rho^*}{\Delta t},$$
+			where $\rho^*$ is the predicted density after applying all non-pressure forces.
+			Discretizing the PPE using the SPH formulation yields a linear system
+			$$\mathbf{A} \mathbf{p} = \mathbf{s}$$
+			for the unknown pressure values $\mathbf{p}$ and the source term $\mathbf{s}$.</p>
+			
+			<p>The first solve enforces that the density stays constant over time. After the time integration with the resulting forces the divergence of the velocity field should be zero. However, due to the numerical integration this is not guaranteed. Therefore, DFSPH solves a second PPE for the divergence source term:
+			$$\Delta t \nabla^2 p = \rho \nabla \cdot \mathbf v.$$
+			</p>
+			
+			<p>Finally, by the combination of both solvers we get a constant density and a divergence-free velocity field.</p>
+				
+			<h3>1. Neighborhood search</h3>
+				The neighborhood search is performed using spatial hashing. In each step all particles are added to a spatial grid using a cell size that equals the support radius of the SPH kernel function. Hence, the neighbor particles of a particle in cell (i,j) lie in one of the 9 neighboring cells: (i±1, j±1).
+				
+			<h3>2. SPH density computation</h3>
+				Using the SPH formulation the density is determined as:
+				$$\rho_i = \sum_j \frac{m_j}{\rho_j} \rho_j W_{ij} = \sum_j m_j W_{ij}.$$
+				Hence, the density only depends on the masses and positions of the particles.
+				
+			<h3>3. Compute diagonal matrix elements $a_{ii}$</h3>
+				The diagonal elements of the system matrix $\mathbf{A}$ are determined as
+				$$a_{ii} = -\frac{\Delta t}{\rho_i^2} \left (\sum_j \left \| m_j \nabla W_{ij}\right \|^2 + \left \| \sum_j  m_j \nabla W_{ij}\right \|^2 \right ).$$
+				
+			<h3>4. Viscosity (XSPH)</h3>
+				Artificial viscosity is introduced by smoothing the velocity field as:
+				$$\mathbf {a}^{\text{visco}}_i = \frac{\alpha}{\Delta t} \sum_j \frac{m_j}{\rho_j} (\mathbf v_j - \mathbf v_i) W_{ij}.$$			
+				
+			<h3>5. Integrate velocities only considering non-pressure forces </h3>
+			
+				The particles velocities are updated using an Euler method:
+				$$\begin{align*}
+					\mathbf v^* &= \mathbf v(t) + \Delta t \mathbf a^\text{np}(t) \\
+				\end{align*}$$
+				where $\mathbf a^\text{np}$ are the accelerations corresponding to the sum of non-pressure forces (e.g. viscosity).
+				
+			<h3>6. Compute constant density source term</h3>
+				
+				Determine the source term on the right hand side of the linear system:
+				$$s_i = \frac{\rho_0 - \rho_i^*}{\Delta t},$$
+				where 
+				$$\rho_i^* = \rho_i + \Delta t \frac{D \rho_i}{D t} = \rho_i + \Delta t \sum_j m_j (\mathbf{v}^*_i - \mathbf{v}^*_j) \cdot \nabla W_{ij}$$
+				
+				
+			<h3>7. Solver loop</h3>
+			The PPE is solved using relaxed Jacobi iterations with a relaxation factor of $\omega = 0.5$ until the density error is smaller than a given tolerance or a maximum number of iterations is reached. 
+				
+			<h3>8. Compute pressure accelerations</h3>
+				The pressure acceleration of a particle is determined by a symmetric SPH formulation to preserves linear and angular momentum:
+				$$\mathbf a^\text{p}_i = - \sum_j m_j \left ( \frac{p_i}{\rho_i^2} + \frac{p_j}{\rho_j^2}\right ) \nabla W_{ij}.$$
+				
+				
+			<h3>9. Determine $\mathbf{A} \mathbf{p}$</h3>
+				Compute the product of the system matrix $\mathbf{A}$ and the current pressure vector:
+				$$(\mathbf{A} \mathbf{p})_i = \Delta t \sum_j m_j \left (\mathbf{a}^\text{p}_i - \mathbf{a}^\text{p}_j \right ) \cdot \nabla W_{ij}.$$
+				
+			<h3>10. Update pressure values</h3>
+				
+				In each solver iteration we update the pressure value for each particle $i$ as
+				$$p_i := p_i + \frac{\omega}{a_{ii}} \left (s_i - (\mathbf{A} \mathbf{p})_i \right ).$$
+			
+			<h3>11. Time integration with pressure forces</h3>
+				
+				Finally, the particles are advected using a symplectic Euler method:
+				$$\begin{align*}
+					\mathbf v(t + \Delta t) &= \mathbf v(t) + \Delta t \mathbf a^\text{p}(t) \\
+					\mathbf x(t + \Delta t) &= \mathbf x(t) + \Delta t \mathbf v(t + \Delta t),
+				\end{align*}$$
+				where $\mathbf a^\text{p}$ are the accelerations corresponding to the sum of  pressure forces.
+				
+			<h3>16. Compute divergence source term</h3>
+				
+				Determine the source term on the right hand side of the linear system:
+				$$s_i = \rho_i \nabla \cdot \mathbf v_i,$$
+				where 
+				$$\rho_i \nabla \cdot \mathbf v_i = -\frac{D \rho_i}{D t} = -\sum_j m_j (\mathbf{v}_i - \mathbf{v}_j) \cdot \nabla W_{ij}.$$
+				Note that in contrast to the constant density source term, we do not need predicted velocities here since we want to make the current velocity field divergence-free.
+				
+			<h3>Boundary handling</h3>
+				In order to implement a rigid-fluid coupling the SPH equation for the density computation is extended by a second sum over the contributing neighboring boundary particles $k$ [AIA+12]:
+				$$\rho_i = \sum_j m_j W_{ij} + \sum_k \Psi_k W_{ik}.$$
+				Each boundary particle $k$ has a pseudo-mass $\Psi$ which considers the density of the boundary sampling points:
+				$$\Psi_k = \rho_0 V_k = \rho_0 \frac{m_k}{\rho_k} = \rho_0 \frac{m_k}{\sum_l m_k W_{kl}} = \rho_0 \frac{1}{\sum_l W_{kl}}$$
+				where $l$ denotes the boundary particle neighbors of particle $k$.
+			
+			<h3>References</h3>
+			<ul>
+			<li>[BK17] Jan Bender and Dan Koschier. Divergence-Free SPH for Incompressible and Viscous Fluids. IEEE Transactions on Visualization and Computer Graphics, 23(3), 2017.</li>
+			<li>[AIA+12] Nadir Akinci, Markus Ihmsen, Gizem Akinci, Barbara Solenthaler, and Matthias Teschner, "Versatile rigid-fluid coupling for incompressible SPH", ACM Transactions on Graphics 31(4), 2012</li>
+			</ul>
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Particle 
+	{
+		constructor (x, y) 
+		{
+			this.x = x;				// position
+			this.y = y;	
+			this.vx = 0;			// velocity
+			this.vy = 0;	
+			this.ax = 0;			// acceleration
+			this.ay = 0;	
+			this.pax = 0;			// pressure acceleration
+			this.pay = 0;	
+			this.density = 0;		// density
+			this.sourceTerm = 0;	// source term
+			this.pressure = 0;		// pressure (constant density solver)
+			this.pressureV = 0;		// pressure (divergence-free solver)
+			this.mass = 0;			// mass
+			this.aii = 0.0; 		// diagonal element
+			this.aij_pj = 0.0;		// sum_j aij * pj
+			this.neighbors = [];	// list of neighbors
+		}
+	}
+	
+	class BoundaryParticle 
+	{
+		constructor (x, y) 
+		{
+			this.x = x;				// position
+			this.y = y;
+			this.psi = 0.5;			// pseudo mass
+			this.neighbors = [];	// list of neighbors
+		}
+	}
+	
+	class GridCell 
+	{
+		constructor () 
+		{
+			this.timeStamp = -2.0;
+			this.particles = [];	
+		}
+	}
+	
+	class Simulation
+	{
+		constructor(width, height)
+		{
+			this.particles = [];
+			this.boundaryParticles = [];
+			this.particleRadius = 0.025;
+			this.supportRadius = 4.0*this.particleRadius;		// support radius is 4x particle radius
+			this.density0 = 1000.0;								// rest density of water
+			this.viscosity = 0.01;
+			this.diam = 2.0 * this.particleRadius;
+			this.mass = this.diam*this.diam*this.density0;		// mass = area * rest density
+			this.timeStepSize = 0.005;
+			this.maxIterations = 100;
+			this.maxIterationsV = 100;
+			this.time = 0;
+			this.maxError = 0.01;
+			this.maxErrorV = 0.1;
+			this.iter = 0;
+			this.iterV = 0;
+			this.gridMap = new Array(100000);
+			for (let i = 0; i < 100000; i++) 
+				this.gridMap[i] = new GridCell();
+			
+			// constants for kernel computation
+			this.kernel_k = 40.0 / (7.0 * (Math.PI*this.supportRadius*this.supportRadius));	  
+			this.kernel_l = 240.0 / (7.0 * (Math.PI*this.supportRadius*this.supportRadius));
+			this.kernel_0 = this.cubicKernel2D(0);
+					
+			this.width = width;
+			this.height = height;
+			this.gravity = -9.81;
+			this.numFluidParticles = 0;
+			this.numParticles = 0;
+		}
+		
+		// initialize scene: generate a block of water particles and
+		// a box of boundary particles around
+		init()
+		{			
+			// create particles  
+			let i;
+			let j;
+			let w = this.width;
+			let h = this.height;
+			let bw = 3*w;
+			let bh = 3*h;
+			
+			// generate a block of fluid particles 
+			for (i = 0; i < h; i++) 
+			{
+				for (j = 0; j < w; j++) 
+				{
+					this.particles.push(new Particle(
+						-0.5*bw*this.diam + j*this.diam + this.diam + this.particleRadius, 
+						i*this.diam + this.diam + this.particleRadius));
+				}
+			}
+			this.numFluidParticles = this.particles.length;
+	
+			// generate a box of boundary particles
+			for (j = 0; j < bw; j++) 
+			{
+				// bottom
+				this.particles.push(new BoundaryParticle(-0.5*bw*this.diam + j*this.diam, 0));
+				// top
+				this.particles.push(new BoundaryParticle(-0.5*bw*this.diam + j*this.diam, bh*this.diam));
+			}
+			
+			for (j = 1; j < bh; j++) 
+			{
+				// left
+				this.particles.push(new BoundaryParticle(-0.5*bw*this.diam, j*this.diam));
+				// right
+				this.particles.push(new BoundaryParticle(-0.5*bw*this.diam + (bw-1)*this.diam, j*this.diam));
+			}
+			this.numParticles = this.particles.length;
+			
+			// compute pseudo mass psi for boundary particles
+			let boundary = [];
+			for (i = this.numFluidParticles; i < this.numParticles; i++) 
+			{
+				// temporary copy of boundary positions 
+				boundary.push(this.particles[i]);
+			}
+			
+			// set timestamps to -1.0 since the neighborhood search is performed in a 
+			// precomputation step
+			this.time = -1.0;
+			this.neighborHoodSearch(boundary, boundary.length, boundary.length);
+			this.time = 0.0;
+			
+			// pseudo mass is computed as (rest density) / sum_j W_ij
+			for (i = this.numFluidParticles; i < this.numParticles; i++) 
+			{
+				let index = i-this.numFluidParticles;
+				let delta = this.kernel_0;
+				let nl = boundary[index].neighbors.length;					
+				for(j=0; j < nl; j++)
+				{
+					let nj = boundary[index].neighbors[j]+this.numFluidParticles;
+					let xi_xj_x = this.particles[i].x - this.particles[nj].x;
+					let xi_xj_y = this.particles[i].y - this.particles[nj].y;
+					delta += this.cubicKernel2D(this.norm(xi_xj_x, xi_xj_y));
+				}
+				this.particles[i].psi = 1.0*this.density0 * 1.0/delta;
+			}
+			
+			// initial neighborhood search
+			this.neighborHoodSearch(this.particles, this.numFluidParticles, this.numParticles);
+		
+			// Compute densities (time 0)
+			this.computeDensity();
+			
+ 			// Compute diagonal matrix elements (time 0)
+			this.compute_aii();
+		}
+		
+		// compute the norm of a vector (x,y)
+		norm(x, y)
+		{
+			return Math.sqrt(x*x + y*y);
+		}
+		
+		// compute the squared norm of a vector (x,y)
+		squardNorm(x, y)
+		{
+			return (x*x + y*y);
+		}
+		
+		// Cubic spline kernel 2D
+		cubicKernel2D(r)
+		{
+			let res = 0.0;
+			let q = r / this.supportRadius;
+			if (q <= 1.0)
+			{
+				let q2 = q*q;
+				let q3 = q2*q;
+				if (q <= 0.5)
+					res = this.kernel_k * (6.0*q3 - 6.0*q2 + 1.0);
+				else
+					res = this.kernel_k * (2.0*Math.pow(1.0 - q, 3));
+			}
+			return res;
+		}
+		
+		// Gradient of cubic spline kernel 2D
+		cubicKernel2D_Gradient(rx, ry)
+		{
+			let res = [0,0];
+			let rl = this.norm(rx, ry);
+			let q = rl / this.supportRadius;
+			if (q <= 1.0)
+			{
+				if (rl > 1.0e-6)
+				{
+					let gradq_x = rx * (1.0 / (rl*this.supportRadius));
+					let gradq_y = ry * (1.0 / (rl*this.supportRadius));
+					if (q <= 0.5)
+					{
+						res[0] = this.kernel_l*q*(3.0*q - 2.0) * gradq_x;
+						res[1] = this.kernel_l*q*(3.0*q - 2.0) * gradq_y;
+					}
+					else
+					{
+						let factor = (1.0 - q) * (1.0 - q);
+						res[0] = this.kernel_l*(-factor) * gradq_x;
+						res[1] = this.kernel_l*(-factor) * gradq_y;
+					}
+				}
+			}
+			return res;
+		}
+		
+		// hash function for spatial hashing (neighborhood search)
+		hashFunction(x, y)
+		{
+			let p1 = 73856093 * x;
+			let p2 = 19349663 * y;
+			return Math.abs(p1 + p2) % 100000;
+		}
+		
+		// search the neighbors of all fluid particles using spatial hashing
+		neighborHoodSearch(p, numFluidParticles, numTotalParticles)
+		{
+			// fill grid with particles
+			let invGridSize = 1.0/this.supportRadius;
+
+			// fluid particles
+			for (let i = 0; i < numTotalParticles; i++) 
+			{
+				let x = p[i].x;
+				let y = p[i].y;
+				
+				// get position in grid
+				let cellPos1 = Math.floor((x + 100.0) * invGridSize);
+				let cellPos2 = Math.floor((y + 100.0) * invGridSize);
+				
+				// compute hash value
+				let hash = this.hashFunction(cellPos1, cellPos2);
+				
+				// insert particle in hash map
+				if (this.gridMap[hash].timeStamp == this.time)
+					this.gridMap[hash].particles.push(i);
+				else
+				{
+					this.gridMap[hash].particles = [i];
+					this.gridMap[hash].timeStamp = this.time;
+				}
+			}
+			
+			
+			// loop over all 9 neighboring cells
+			let radius2 = this.supportRadius * this.supportRadius;
+			for (let i = 0; i < numFluidParticles; i++) 
+			{
+				// reset neighbor list
+				p[i].neighbors = [];
+				let x = p[i].x;
+				let y = p[i].y;
+				let cellPos1 = Math.floor((x + 100.0) * invGridSize);
+				let cellPos2 = Math.floor((y + 100.0) * invGridSize);
+				for (let j = -1; j <= 1; j++)
+				{
+					for(let k = -1; k <= 1; k++)
+					{
+						// get hash value of neighboring cell
+						let hash = this.hashFunction(cellPos1+j, cellPos2+k);
+						if (this.gridMap[hash].timeStamp == this.time)
+						{
+							// if neighboring cell contains particles, get particle list
+							let part = this.gridMap[hash].particles;
+							
+							// loop over particles in neighboring cell 
+							// and add particles with a distance of less
+							// than the support radius to neighbor list
+							for (let l=0; l < part.length; l++)
+							{
+								let nIndex = part[l];
+								if (nIndex != i)
+								{
+									let xn = p[nIndex].x;
+									let yn = p[nIndex].y;
+									let diffx = x-xn;
+									let diffy = y-yn;
+									let dist2 = diffx*diffx + diffy*diffy;
+									
+									// if distance to particle is < radius, add particle
+									if (dist2 - radius2 < 1.0e-6)
+										p[i].neighbors.push(nIndex);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		
+		// set all accelerations to (0, gravity) 		
+		resetAccelerations()
+		{
+			let i;
+			for	(i = 0; i < this.numFluidParticles; i++) 
+			{
+				let p = this.particles[i];
+				p.ax = 0;
+				p.ay = this.gravity;
+			}
+		}
+		
+		// compute the density of all particles using the SPH formulation
+		computeDensity()
+		{
+			for (let i = 0; i < this.numFluidParticles; i++) 
+			{
+				let p_i = this.particles[i];
+				
+				// consider particle i
+				p_i.density = this.mass * this.kernel_0;
+			
+				let nl = p_i.neighbors.length;
+				for(let j=0; j < nl; j++)
+				{
+					let nj = p_i.neighbors[j];
+					let p_j = this.particles[nj];
+					
+					// compute W (xi-xj)
+					let Wij = this.cubicKernel2D(this.norm(p_i.x - p_j.x, p_i.y - p_j.y));
+					
+					// Fluid
+					if (nj < this.numFluidParticles)
+						p_i.density += this.mass * Wij;	
+					else			// Boundary
+						p_i.density += p_j.psi * Wij;
+				}
+			}
+		}
+		
+		// compute the constant density source term
+		computeConstantDensitySourceTerm()
+		{
+			let dt = this.timeStepSize;
+			for (let i = 0; i < this.numFluidParticles; i++) 
+			{
+				let p_i = this.particles[i];
+				let Drho_Dt = 0.0;	
+						
+				let nl = p_i.neighbors.length;
+				for(let j=0; j < nl; j++)
+				{
+					let nj = p_i.neighbors[j];
+					let p_j = this.particles[nj];
+					
+					// compute grad W (xi-xj)
+					let gradW = this.cubicKernel2D_Gradient(p_i.x - p_j.x, p_i.y - p_j.y);
+					
+					// Fluid
+					if (nj < this.numFluidParticles)
+					{
+						// D rho_i / Dt = sum_j m_j (vi-vj)^T gradW
+						Drho_Dt += this.mass * ((p_i.vx - p_j.vx) * gradW[0] + (p_i.vy - p_j.vy) * gradW[1]);
+					}
+					else			// Boundary
+					{
+						// D rho_i / Dt = sum_j psi_j (vi-vj)^T gradW
+						Drho_Dt += p_j.psi * (p_i.vx * gradW[0] + p_i.vy * gradW[1]);
+					}
+				}
+				p_i.sourceTerm = 1.0/dt * (this.density0 - (p_i.density + dt*Drho_Dt));
+			}
+		}
+		
+		// compute the divergence-free source term
+		computeDivergenceSourceTerm()
+		{
+			let dt = this.timeStepSize;
+			for (let i = 0; i < this.numFluidParticles; i++) 
+			{
+				let p_i = this.particles[i];
+				let Drho_Dt = 0.0;	
+						
+				let nl = p_i.neighbors.length;
+				for(let j=0; j < nl; j++)
+				{
+					let nj = p_i.neighbors[j];
+					let p_j = this.particles[nj];
+					
+					// compute grad W (xi-xj)
+					let gradW = this.cubicKernel2D_Gradient(p_i.x - p_j.x, p_i.y - p_j.y);
+					
+					// Fluid
+					if (nj < this.numFluidParticles)
+					{
+						// D rho_i / Dt = sum_j m_j (vi-vj)^T gradW
+						Drho_Dt += this.mass * ((p_i.vx - p_j.vx) * gradW[0] + (p_i.vy - p_j.vy) * gradW[1]);
+					}
+					else			// Boundary
+					{
+						// D rho_i / Dt = sum_j psi_j (vi-vj)^T gradW
+						Drho_Dt += p_j.psi * (p_i.vx * gradW[0] + p_i.vy * gradW[1]);
+					}
+				}
+				p_i.sourceTerm = -Drho_Dt;
+			}
+		}
+		
+		
+		// simulation step
+		simulationStep()
+		{		
+			// reset the accelerations of the particles
+			this.resetAccelerations();		
+						
+			// compute non-pressure forces 
+			// note that neighbors and densities are already determined at this point
+			this.computeViscosity();
+			
+			// update velocities using non-pressure forces
+			let dt = this.timeStepSize;
+			for (let i = 0; i < this.numFluidParticles; i++) 
+			{
+				let p = this.particles[i];
+			
+				// integrate velocity considering only non-pressure forces 
+				p.vx += dt * p.ax;
+				p.vy += dt * p.ay;
+			}
+		
+			// compute constant density source term
+			this.computeConstantDensitySourceTerm();				
+			
+			// solve constant density constraint
+			this.constantDensitySolve();
+		
+			// update velocities using pressure forces
+			for (let i = 0; i < this.numFluidParticles; i++) 
+			{
+				let p = this.particles[i];
+			
+				// integrate velocity considering pressure forces 
+				p.vx += dt * p.pax;
+				p.vy += dt * p.pay;
+				
+				// integrate position
+				p.x += dt * p.vx;
+				p.y += dt * p.vy;
+			}
+			
+			// update simulation time
+			this.time = this.time + this.timeStepSize;
+			
+			// neighborhood search
+			this.neighborHoodSearch(this.particles, this.numFluidParticles, this.numParticles);
+		
+			// update densities
+			this.computeDensity();
+			
+ 			// update diagonal matrix elements
+			this.compute_aii();
+			
+			// compute divergence source term
+			this.computeDivergenceSourceTerm();
+			
+			// solve divergence-free constraint
+			this.divergenceSolve();
+			
+			// update velocities using pressure forces
+			for (let i = 0; i < this.numFluidParticles; i++) 
+			{
+				let p = this.particles[i];
+			
+				// integrate velocity considering pressure forces 
+				p.vx += dt * p.pax;
+				p.vy += dt * p.pay;
+			}
+		}
+		
+		// solve constant density constraint
+		constantDensitySolve()
+		{
+			this.avg_density_err = 1000;
+			this.iter = 0;
+			while (((this.avg_density_err > this.maxError * 0.01 * this.density0) && (this.iter < this.maxIterations)) || (this.iter < 2))	// max. error is given in percent
+			{		
+				this.computePressureAccelerations();
+				this.compute_aij_pj();
+				
+				// update pressure values
+				let density_err = 0.0;
+				for (let i = 0; i < this.numFluidParticles; i++) 
+				{
+					let p_i = this.particles[i];
+					if (Math.abs(p_i.aii) > 1.0e-6)
+						p_i.pressure += 0.5 / p_i.aii * (p_i.sourceTerm - p_i.aij_pj);
+					else 
+						p_i.pressure = 0.0;
+					p_i.pressure = Math.max(p_i.pressure, 0.0);		// pressure clamping
+					density_err -= Math.min(p_i.sourceTerm - p_i.aij_pj, 0.0) * this.timeStepSize;
+				}	
+
+				this.avg_density_err = density_err / this.numFluidParticles;
+
+				this.iter += 1;				
+			}
+		}
+		
+		// solve divergence-free constraint
+		divergenceSolve()
+		{
+			this.avg_density_err = 1000;
+			this.iterV = 0;
+			while (((this.avg_density_err > this.maxErrorV * 0.01 * this.density0) && (this.iterV < this.maxIterationsV)) || (this.iterV < 1))	// max. error is given in percent
+			{		
+				this.computePressureAccelerationsV();
+				this.compute_aij_pj();
+				
+				// update pressure values
+				let density_err = 0.0;
+				for (let i = 0; i < this.numFluidParticles; i++) 
+				{
+					let p_i = this.particles[i];
+					if (Math.abs(p_i.aii) > 1.0e-6)
+						p_i.pressureV += 0.5 / p_i.aii * (p_i.sourceTerm - p_i.aij_pj);
+					else 
+						p_i.pressureV = 0.0;
+						
+					// in case of particle deficiency do not perform a divergence solve
+					if (p_i.neighbors.length < 7)
+						p_i.pressureV = 0.0;
+
+					p_i.pressureV = Math.max(p_i.pressureV, 0.0);		// pressure clamping
+					density_err -= Math.min(p_i.sourceTerm - p_i.aij_pj, 0.0) * this.timeStepSize;
+				}	
+
+				this.avg_density_err = density_err / this.numFluidParticles;
+	
+				this.iterV += 1;				
+			}
+		}
+		
+		// compute diagonal matrix elements
+		compute_aii()
+		{
+			let dt = this.timeStepSize;
+			for (let i = 0; i < this.numFluidParticles; i++) 
+			{
+				let p_i = this.particles[i];
+
+				// Compute gradients dC/dx_j 
+				let sum_m_gradW = 0.0;
+				let m_gradW_x = 0;
+				let m_gradW_y = 0;
+				
+				let nl = p_i.neighbors.length;
+				for(let j=0; j < nl; j++)
+				{
+					let nj = p_i.neighbors[j];
+					let p_j = this.particles[nj];
+					
+					// compute grad W (xi-xj)
+					let gradW = this.cubicKernel2D_Gradient(p_i.x - p_j.x, p_i.y - p_j.y);
+					
+					// Fluid
+					if (nj < this.numFluidParticles)
+					{
+						let mgw_x = this.mass * gradW[0];
+						let mgw_y = this.mass * gradW[1];
+						sum_m_gradW += this.squardNorm(mgw_x, mgw_y);
+						m_gradW_x += mgw_x;
+						m_gradW_y += mgw_y;
+					}
+					// Boundary
+					else
+					{						
+						let mgw_x = p_j.psi * gradW[0];
+						let mgw_y = p_j.psi * gradW[1];
+						//sum_m_gradW += this.squardNorm(mgw_x, mgw_y);
+						m_gradW_x += mgw_x;
+						m_gradW_y += mgw_y;
+					}
+				}
+
+				sum_m_gradW += this.squardNorm(m_gradW_x, m_gradW_y);
+
+				// Compute a_ii
+				p_i.aii = -dt / (p_i.density * p_i.density) * sum_m_gradW;
+			}
+		}
+		
+		// compute accelerations caused by pressure forces
+		computePressureAccelerations()
+		{
+			for (let i = 0; i < this.numFluidParticles; i++) 
+			{
+				let p_i = this.particles[i];
+				let dpi = p_i.pressure/(p_i.density*p_i.density);
+				p_i.pax = 0.0;
+				p_i.pay = 0.0;
+			
+				var nl = p_i.neighbors.length;
+				for(let j=0; j < nl; j++)
+				{
+					let nj = p_i.neighbors[j];
+					let p_j = this.particles[nj];
+					
+					// compute grad W (xi-xj)
+					let gradW = this.cubicKernel2D_Gradient(p_i.x - p_j.x, p_i.y - p_j.y);
+					
+					// Fluid
+					if (nj < this.numFluidParticles)
+					{
+						let dpj = p_j.pressure/(p_j.density*p_j.density);					
+						p_i.pax -= this.mass * (dpi + dpj) * gradW[0];
+						p_i.pay -= this.mass * (dpi + dpj) * gradW[1];
+					}
+					// Boundary
+					else
+					{		
+						p_i.pax -= p_j.psi * dpi * gradW[0];
+						p_i.pay -= p_j.psi * dpi * gradW[1];					
+					}
+				}
+			}
+		}
+		
+		// compute accelerations caused by pressure forces
+		computePressureAccelerationsV()
+		{
+			for (let i = 0; i < this.numFluidParticles; i++) 
+			{
+				let p_i = this.particles[i];
+				let dpi = p_i.pressureV/(p_i.density*p_i.density);
+				p_i.pax = 0.0;
+				p_i.pay = 0.0;
+			
+				var nl = p_i.neighbors.length;
+				for(let j=0; j < nl; j++)
+				{
+					let nj = p_i.neighbors[j];
+					let p_j = this.particles[nj];
+					
+					// compute grad W (xi-xj)
+					let gradW = this.cubicKernel2D_Gradient(p_i.x - p_j.x, p_i.y - p_j.y);
+					
+					// Fluid
+					if (nj < this.numFluidParticles)
+					{
+						let dpj = p_j.pressureV/(p_j.density*p_j.density);					
+						p_i.pax -= this.mass * (dpi + dpj) * gradW[0];
+						p_i.pay -= this.mass * (dpi + dpj) * gradW[1];
+					}
+					// Boundary
+					else
+					{		
+						p_i.pax -= p_j.psi * dpi * gradW[0];
+						p_i.pay -= p_j.psi * dpi * gradW[1];					
+					}
+				}
+			}
+		}
+		
+		// compute A * p
+		compute_aij_pj()
+		{
+			let dt = this.timeStepSize;
+			for (let i = 0; i < this.numFluidParticles; i++) 
+			{
+				let p_i = this.particles[i];
+				p_i.aij_pj = 0.0;
+			
+				var nl = p_i.neighbors.length;
+				for(let j=0; j < nl; j++)
+				{
+					let nj = p_i.neighbors[j];
+					let p_j = this.particles[nj];
+					
+					// compute grad W (xi-xj)
+					let gradW = this.cubicKernel2D_Gradient(p_i.x - p_j.x, p_i.y - p_j.y);
+					
+					// Fluid
+					if (nj < this.numFluidParticles)
+					{
+						// a_ij * p_j = dt^2 * sum_j m_j (ai-aj)^T gradW
+						p_i.aij_pj += this.mass * ((p_i.pax - p_j.pax) * gradW[0] + (p_i.pay - p_j.pay) * gradW[1]);
+					}
+					else			// Boundary
+					{
+						// a_ij * p_j = dt^2 * sum_j psi_j (ai-aj)^T gradW
+						p_i.aij_pj += p_j.psi * (p_i.pax * gradW[0] + p_i.pay * gradW[1]);
+					}
+				}
+				p_i.aij_pj *= dt;
+			}
+		}
+		
+		// compute the viscosity forces (XSPH) for all particles 
+		computeViscosity()
+		{
+			for (let i = 0; i < this.numFluidParticles; i++) 
+			{		
+				let p_i = this.particles[i];
+				let nl = p_i.neighbors.length;
+				for(let j=0; j < nl; j++)
+				{
+					let nj = p_i.neighbors[j];
+					let p_j = this.particles[nj];
+					
+					// Fluid
+					if (nj < this.numFluidParticles)
+					{
+						let vi_vj_x = p_i.vx - p_j.vx;	
+						let vi_vj_y = p_i.vy - p_j.vy;
+						// compute W (xi-xj)
+						let Wij = this.cubicKernel2D(this.norm(p_i.x - p_j.x, p_i.y - p_j.y));
+
+						let factor = this.mass/p_j.density * 1.0/this.timeStepSize * this.viscosity*Wij;
+						p_i.ax -= factor * vi_vj_x;
+						p_i.ay -= factor * vi_vj_y;
+					}
+				}
+			}
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2+200};
+			this.zoom = 100;
+			this.selectedParticle = -1;
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			let w = parseInt(document.getElementById('widthInput').value);
+			let h = parseInt(document.getElementById('heightInput').value);
+			delete this.sim;
+			this.sim = new Simulation(w, h);
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+
+			this.sim.maxIterations = parseInt(document.getElementById('iterationsInput').value);
+			this.sim.maxIterationsV = parseInt(document.getElementById('iterationsVInput').value);
+			this.sim.viscosity = parseFloat(document.getElementById('viscosityInput').value);
+			this.sim.gravity = parseFloat(document.getElementById('gravityInput').value);
+			this.sim.timeStepSize = parseFloat(document.getElementById('timeStepSizeInput').value);
+			this.sim.maxError = parseFloat(document.getElementById('maxErrorInput').value);
+			this.sim.maxErrorV = parseFloat(document.getElementById('maxErrorVInput').value);
+			
+			document.getElementById("numParticles").innerHTML = this.sim.particles.length;
+			
+			this.sim.init();
+			this.mainLoop();
+		}
+		
+		// render scene
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+					
+			// draw fluid particles as circles
+			for (let i = 0; i < this.sim.numFluidParticles; i++) 
+			{
+				let p = this.sim.particles[i];
+				let r = this.sim.particleRadius;
+				if (i == this.selectedParticle)
+				{
+					// draw selected particle in red with larger radius
+					this.c.fillStyle = "#FF0000";	
+					r = 3*r;
+				}
+				else 
+				{
+					// color-coding of velocity
+					let v = this.sim.norm(p.vx, p.vy);
+					v = Math.min(v, 8.0);
+					this.c.fillStyle='hsl(225,100%,' + (25.0+50.0*v/8.0) + '%)';
+				}
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+			}
+			
+			// draw boundary particles as circles
+			for (let i = this.sim.numFluidParticles; i < this.sim.numParticles; i++) 
+			{
+				let p = this.sim.particles[i];
+				let r = this.sim.particleRadius;
+				this.c.fillStyle = "#888888";	
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+			}
+		}
+		
+		mainLoop()
+		{
+			// perform multiple sim steps per render step
+			for (let i=0; i < 8; i++)
+			{
+				let t0 = performance.now();
+				
+				this.sim.simulationStep();
+
+				let t1 = performance.now();
+				this.timeSum += t1 - t0;
+				this.counter += 1;
+					
+				if (this.counter % 50 == 0)				
+				{
+					this.timeSum /= this.counter;
+					document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(2);		
+					this.timeSum = 0.0;
+					this.counter = 0;
+				}	
+				document.getElementById("time").innerHTML = this.sim.time.toFixed(2);	
+				document.getElementById("iterations").innerHTML = this.sim.iter;	
+				document.getElementById("iterationsV").innerHTML = this.sim.iterV;	
+			}			
+
+			this.draw();
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+		}
+		
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+		
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);
+				for (let i = 0; i < this.sim.particles.length; i++) 
+				{
+					let p = this.sim.particles[i];
+					let px = this.origin.x + p.x * this.zoom;
+					let py = this.origin.y - p.y * this.zoom;
+					let dx = px - mousePos.x
+					let dy = py - mousePos.y
+					let dist2 = Math.sqrt(dx * dx + dy * dy)
+					if (dist2 < 10)
+					{
+						this.selectedParticle = i;
+						break;
+					}				
+				}			
+			}
+		}
+		
+		getMousePos(canvas, event) 
+		{
+			let rect = canvas.getBoundingClientRect();
+			return {
+				x: event.clientX - rect.left,
+				y: event.clientY - rect.top
+			};
+		}
+	
+		mouseMove(event)
+		{
+			if (this.selectedParticle != -1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);		
+				this.sim.particles[this.selectedParticle].x = (mousePos.x - this.origin.x) / this.zoom;
+				this.sim.particles[this.selectedParticle].y = -(mousePos.y - this.origin.y) / this.zoom;
+			}
+		}
+		
+		mouseUp(event) 
+		{
+			this.selectedParticle = -1;
+		}
+		
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+		}
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>

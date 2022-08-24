@@ -1,0 +1,381 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Particle System</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Particle System</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table>		
+				<col width="180" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Current time</label></td>
+					<td><span id="time">0.00</span> s</td>
+				</tr>
+				<tr>
+					<td><label>Time per sim. step</label></td>
+					<td><span id="timePerStep">0.00</span> ms</td>
+				</tr>
+				<tr>
+					<td><label># particles</label></td>
+					<td><span id="numParticles">0</span></td>
+				</tr>
+				<tr>
+					<td><label for="timeStepSizeInput">Time step size</label></td>
+					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.005" step="0.001"></td>
+				</tr>
+				<tr>
+					<td><label for="gravityInput">Gravity</label></td>
+					<td><input onchange="gui.sim.gravity=parseFloat(value)" id="gravityInput" type="number" value="-9.81" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="particleEmissionInput">Particle emission</label></td>
+					<td><input onchange="gui.sim.particleEmission=parseInt(value)" id="particleEmissionInput" type="number" value="5" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="maxLifeTimeInput">Max. lifetime</label></td>
+					<td><input onchange="gui.sim.maxLifeTime=parseFloat(value)" id="maxLifeTimeInput" type="number" value="3" step="0.1"></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>Particle system algorithm:</h2>
+				This example shows a simple particle system:
+				<ol>
+					<li>remove particles with age > max. life time</li>
+					<li>generate new particles by emitters</li>
+					<li>compute forces for all particles</li>
+					<li>time integration to get new particle positions and velocities</li>
+				</ol>
+				
+			<h3>1. Remove particles with age > max. life time</h3>
+			
+				<p>The life time of each particle is set to 0 when a particle is generated. In each simulation step the life time is increased by the time step size $\Delta t$. When a particle's life time is greater than a predefined maximum life time, the particle is removed from the simulation.</p>
+				
+				<p>Note that the life time can be used for rendering effects. In our case the transparency is increased depending on the life time to fade out the particles.</p>
+				
+			<h3>2. Generate new particles by emitters</h3>
+				<p>In each simulation step new particles are generated at the position of the emitter. Typically they are initialized with some predefined values and sometimes some random values are added to obtain more natural results.</p>
+				
+				<p>In our simulation the particles are generated with a velocity pointing upwards. Moreover, the velocity in x- and y-direction is modified by some random values.</p>
+				
+			<h3>3. Compute forces for all particles</h3>
+				<p>In each step forces are determined for the particles, e.g. gravity, wind etc. In our simple example only gravity is applied.</p>
+			
+			<h3>4. Time integration</h3>
+				Finally, the particles are advected by numerical time integration. In our case we use a symplectic Euler method:
+				$$\begin{align*}
+					\mathbf v(t + \Delta t) &= \mathbf v(t) + \frac{\Delta t}{m} \mathbf f^{\text{ext}}  \\
+					\mathbf x(t + \Delta t) &= \mathbf x(t) + \Delta t \mathbf v(t + \Delta t),
+				\end{align*}$$
+				where $\mathbf f^{\text{ext}}$ are the external forces.
+			
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Particle 
+	{
+		constructor (x, y, vx, vy) 
+		{
+			this.x = x;
+			this.y = y;
+			this.fx = 0.0;
+			this.fy = 0.0;
+			this.vx = vx;
+			this.vy = vy;
+			this.lifeTime = 0.0;
+		}
+	}
+	
+	class Simulation
+	{
+		constructor()
+		{
+			this.particles = [];
+			this.mass = 1.0;
+			this.gravity = -9.81;
+			this.timeStepSize = 0.05;
+			this.time = 0;
+			this.maxLifeTime = 3;
+			this.particleEmission = 5;
+			this.emitter_x = 0.0;
+			this.emitter_y = 0.0;
+		}
+		
+		emitParticles()
+		{
+			// emit new particles
+			for (let i = 0; i < this.particleEmission; i++) 
+			{
+				// use random variation of velocity
+				let vx = -5 + Math.random()*10.0;
+				let vy = 10.0 + Math.random()*5.0/2.0;
+				this.particles.push(new Particle(this.emitter_x, this.emitter_y, vx, vy));
+			}
+		}
+		
+		// simulation step
+		simulationStep()
+		{	
+			let dt = this.timeStepSize;
+			
+			// remove particles where lifeTime > maxLifeTime
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				let p = this.particles[i];
+				p.lifeTime += this.timeStepSize;
+				if (p.lifeTime > this.maxLifeTime)
+				{
+					this.particles.splice(i, 1);
+					i--;
+				}
+			}
+			
+			// emit new particles
+			this.emitParticles();
+		
+			// Symplectic Euler
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				let p = this.particles[i];
+				
+				// integrate velocity considering gravitational acceleration and spring forces 
+				p.vx = p.vx + dt * p.fx / this.mass;
+				p.vy = p.vy + dt * (p.fy / this.mass + this.gravity);
+			
+				// integrate position
+				p.x = p.x + dt * p.vx;
+				p.y = p.y + dt * p.vy;
+			}
+			
+			// update simulation time
+			this.time = this.time + dt;
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2};
+			this.zoom = 50;
+			this.particleRadius = 0.05;
+			this.selected = false;
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			delete this.sim;
+			this.sim = new Simulation();
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+
+			this.sim.particleEmission = parseFloat(document.getElementById('particleEmissionInput').value);
+			this.sim.maxLifeTime = parseFloat(document.getElementById('maxLifeTimeInput').value);
+			this.sim.gravity = parseFloat(document.getElementById('gravityInput').value);
+			this.sim.timeStepSize = parseFloat(document.getElementById('timeStepSizeInput').value);
+			
+			document.getElementById("numParticles").innerHTML = this.sim.particles.length;
+			this.mainLoop();
+		}
+		
+		drawCoordinateSystem()
+		{
+			// draw x-axis
+			this.c.strokeStyle = "#FF0000";
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x+1*this.zoom, this.origin.y);
+			this.c.stroke();	
+
+			// draw y-axis
+			this.c.strokeStyle = "#00FF00";	
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x, this.origin.y-1*this.zoom);
+			this.c.stroke();		
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			
+			this.drawCoordinateSystem();
+			
+			// draw particles as circles
+			for (let i = 0; i < this.sim.particles.length; i++) 
+			{
+				let p = this.sim.particles[i];
+				let r = this.particleRadius;
+				//this.c.fillStyle = "#0000FF";	
+				let alpha = 1.0 - p.lifeTime/this.sim.maxLifeTime;
+				this.c.fillStyle = "rgba(0, 30, 200, " + alpha + ")";
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+			}
+			
+			let r = 5.0*this.particleRadius;
+			if (this.selected)
+				this.c.fillStyle = "#FF0000";	
+			else 
+				this.c.fillStyle = "#00BB00";	
+			let px = this.origin.x + this.sim.emitter_x * this.zoom;
+			let py = this.origin.y - this.sim.emitter_y * this.zoom;
+			
+			this.c.beginPath();			
+			this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+			this.c.closePath();
+			this.c.fill();
+		}
+		
+		mainLoop()
+		{
+			// perform multiple sim steps per render step
+			for (let i=0; i < 8; i++)
+			{
+				let t0 = performance.now();
+				
+				this.sim.simulationStep();
+
+				let t1 = performance.now();
+				this.timeSum += t1 - t0;
+				this.counter += 1;
+					
+				if (this.counter % 50 == 0)				
+				{
+					this.timeSum /= this.counter;
+					document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(2);	
+					document.getElementById("numParticles").innerHTML = this.sim.particles.length;
+					this.timeSum = 0.0;
+					this.counter = 0;
+				}	
+				document.getElementById("time").innerHTML = this.sim.time.toFixed(2);	
+			}			
+
+			this.draw();
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+		}
+		
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+		
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);
+				let px = this.origin.x + this.sim.emitter_x * this.zoom;
+				let py = this.origin.y - this.sim.emitter_y * this.zoom;
+				let dx = px - mousePos.x
+				let dy = py - mousePos.y
+				let dist2 = Math.sqrt(dx * dx + dy * dy)
+				if (dist2 < 10)
+					this.selected = true;
+			}
+		}
+		
+		getMousePos(canvas, event) 
+		{
+			let rect = canvas.getBoundingClientRect();
+			return {
+				x: event.clientX - rect.left,
+				y: event.clientY - rect.top
+			};
+		}
+	
+		mouseMove(event)
+		{
+			if (this.selected)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);		
+				this.sim.emitter_x = (mousePos.x - this.origin.x) / this.zoom;
+				this.sim.emitter_y = -(mousePos.y - this.origin.y) / this.zoom;
+			}
+		}
+		
+		mouseUp(event) 
+		{
+			this.selected = false;
+		}
+		
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+		}
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>

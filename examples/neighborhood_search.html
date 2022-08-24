@@ -1,0 +1,472 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Neighborhood Search</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Neighborhood Search</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table>		
+				<col width="180" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Time per step</label></td>
+					<td><span id="timePerStep">0.00</span> ms</td>
+				</tr>
+				<tr>
+					<td><label># particles</label></td>
+					<td><span id="numParticles">0</span></td>
+				</tr>
+				<tr>
+					<td><label for="widthInput">Width</label></td>
+					<td><input onchange="gui.restart()" id="widthInput" type="number" value="30" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="heightInput">Height</label></td>
+					<td><input onchange="gui.restart()" id="heightInput" type="number" value="30" step="1"></td>
+				</tr>
+				<tr>
+				<td><label>Particle radius</label></td>
+				<td><span>0.025</span></td>
+				</tr>
+				<tr>
+					<td><label for="supportRadiusInput">Support radius</label></td>
+					<td><input onchange="gui.restart()" id="supportRadiusInput" value="0.1" type="input"></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>Neighborhood search using spatial hashing:</h2>
+			<p>This example shows how the neighborhood of a particle is determined using spatial hashing [THM+03]. For each particle we want to find its neighbors within a given radius (the support radius of the kernel function). </p>
+				
+			<p>In each step all particles are added to a spatial grid using a cell size $s$ that equals the support radius of the SPH kernel function. The index $(i, j)$ of the grid cell of a particle is determined as
+			$$i = \lfloor x/s \rfloor,\quad\quad j = \lfloor y/s \rfloor.$$
+			
+			Since each particle is in a grid cell of size $s \times s$, the neighbors in a radius of $s$ must lie in one of the 9 neighboring cells (in 3D: 27 cells). Therefore, to get the neighbors for a particle $p$ in cell $(i,j)$, we test for all particles in the 9 neighboring cells $(i\pm1, j\pm1)$ if their distance to $p$ is less than $s$.</p>
+					
+			<h3>References</h3>
+			<ul>
+			<li>[THM+03] Matthias Teschner, Bruno Heidelberger, Matthias Müller, Danat Pomeranets, Markus Gross. Optimized Spatial Hashing for Collision Detection of Deformable Objects. In Proceedings of VMV, 2003.</li>
+			</ul>
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Particle 
+	{
+		constructor (x, y) 
+		{
+			this.x = x;				// position
+			this.y = y;	
+			this.neighbors = [];	// list of neighbors
+		}
+	}
+	
+	class BoundaryParticle 
+	{
+		constructor (x, y) 
+		{
+			this.x = x;				// position
+			this.y = y;
+		}
+	}
+	
+	class GridCell 
+	{
+		constructor () 
+		{
+			this.timeStamp = -2.0;
+			this.particles = [];	
+		}
+	}
+	
+	class Simulation
+	{
+		constructor(width, height, supportRadius)
+		{
+			this.particles = [];
+			this.boundaryParticles = [];
+			this.particleRadius = 0.025;
+			this.supportRadius = supportRadius;		
+			this.diam = 2.0 * this.particleRadius;
+			this.gridMap = new Array(100000);
+			for (let i = 0; i < 100000; i++) 
+				this.gridMap[i] = new GridCell();
+										
+			this.width = width;
+			this.height = height;
+			this.numFluidParticles = 0;
+			this.numParticles = 0;
+			this.time = 0.0;
+			
+			this.init();
+		}
+		
+		// initialize scene: generate a block of water particles and
+		// a box of boundary particles around
+		init()
+		{			
+			// create particles  
+			let i;
+			let j;
+			let w = this.width;
+			let h = this.height;
+			let bw = w+1;
+			let bh = h+1;
+			
+			// generate a block of fluid particles 
+			for (i = 0; i < h; i++) 
+			{
+				for (j = 0; j < w; j++) 
+				{
+					this.particles.push(new Particle(
+						-0.5*bw*this.diam + j*this.diam + this.diam, 
+						-0.5*bh*this.diam + i*this.diam + this.diam));
+				}
+			}
+			this.numFluidParticles = this.particles.length;
+	
+			// generate a box of boundary particles
+			for (j = 0; j < bw; j++) 
+			{
+				// bottom
+				this.particles.push(new BoundaryParticle(-0.5*bw*this.diam + j*this.diam, -0.5*bh*this.diam));
+				// top
+				this.particles.push(new BoundaryParticle(-0.5*bw*this.diam + j*this.diam, 0.5*bh*this.diam));
+			}
+			
+			for (j = 1; j < bh; j++) 
+			{
+				// left
+				this.particles.push(new BoundaryParticle(-0.5*bw*this.diam, -0.5*bh*this.diam+j*this.diam));
+				// right
+				this.particles.push(new BoundaryParticle(-0.5*bw*this.diam + (bw-1)*this.diam, -0.5*bh*this.diam+ j*this.diam));
+			}
+			this.numParticles = this.particles.length;			
+		}
+		
+		// compute the norm of a vector (x,y)
+		norm(x, y)
+		{
+			return Math.sqrt(x*x + y*y);
+		}
+		
+		// hash function for spatial hashing (neighborhood search)
+		hashFunction(x, y)
+		{
+			let p1 = 73856093 * x;
+			let p2 = 19349663 * y;
+			return Math.abs(p1 + p2) % 100000;
+		}
+		
+		// search the neighbors of all fluid particles using spatial hashing
+		neighborHoodSearch(p, numFluidParticles, numTotalParticles)
+		{
+			// fill grid with particles
+			let invGridSize = 1.0/this.supportRadius;		// the cell size is equal to the support radius
+
+			// fluid particles
+			for (let i = 0; i < numTotalParticles; i++) 
+			{
+				let x = p[i].x;
+				let y = p[i].y;
+				
+				// get position in grid
+				let cellPos1 = Math.floor((x + 1000.0) * invGridSize);		// add large number to avoid negative indices
+				let cellPos2 = Math.floor((y + 1000.0) * invGridSize);
+				
+				// compute hash value
+				let hash = this.hashFunction(cellPos1, cellPos2);
+				
+				// insert particle in hash map
+				// using a time stamp avoids cleaning up the hash map in each step
+				if (this.gridMap[hash].timeStamp == this.time)			// this cell has already been used in this time step
+					this.gridMap[hash].particles.push(i);
+				else													// this cell has not been used in this time step
+				{
+					this.gridMap[hash].particles = [i];
+					this.gridMap[hash].timeStamp = this.time;
+				}
+			}
+			
+			
+			// loop over all 9 neighboring cells
+			let radius2 = this.supportRadius * this.supportRadius;
+			for (let i = 0; i < numFluidParticles; i++) 
+			{
+				// reset neighbor list
+				p[i].neighbors = [];
+				let x = p[i].x;
+				let y = p[i].y;
+				let cellPos1 = Math.floor((x + 1000.0) * invGridSize);	// add large number to avoid negative indices
+				let cellPos2 = Math.floor((y + 1000.0) * invGridSize);
+				for (let j = -1; j <= 1; j++)
+				{
+					for(let k = -1; k <= 1; k++)
+					{
+						// get hash value of neighboring cell
+						let hash = this.hashFunction(cellPos1+j, cellPos2+k);
+						if (this.gridMap[hash].timeStamp == this.time)
+						{
+							// if neighboring cell contains particles, get particle list
+							let part = this.gridMap[hash].particles;
+							
+							// loop over particles in neighboring cell 
+							// and add particles with a distance of less
+							// than the support radius to neighbor list
+							for (let l=0; l < part.length; l++)
+							{
+								let nIndex = part[l];
+								if (nIndex != i)
+								{
+									let xn = p[nIndex].x;
+									let yn = p[nIndex].y;
+									let diffx = x-xn;
+									let diffy = y-yn;
+									let dist2 = diffx*diffx + diffy*diffy;
+									
+									// if distance to particle is < radius, add particle
+									if (dist2 - radius2 < 1.0e-6)
+										p[i].neighbors.push(nIndex);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// simulation step
+		simulationStep()
+		{							
+			// neighborhood search
+			this.neighborHoodSearch(this.particles, this.numFluidParticles, this.numParticles);
+			this.time += 0.01;
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2};
+			this.zoom = 400;
+			this.selectedParticle = 435;
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			let w = parseInt(document.getElementById('widthInput').value);
+			let h = parseInt(document.getElementById('heightInput').value);
+			let sr = parseFloat(document.getElementById('supportRadiusInput').value);
+			delete this.sim;
+			this.sim = new Simulation(w, h, sr);
+					
+			document.getElementById("numParticles").innerHTML = this.sim.particles.length;
+			this.mainLoop();
+		}
+		
+		// render scene
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+					
+			// draw fluid particles as blue circles
+			for (let i = 0; i < this.sim.numFluidParticles; i++) 
+			{
+				let p = this.sim.particles[i];
+				let r = this.sim.particleRadius;
+				this.c.fillStyle='hsl(225,100%,40%)';
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+			}
+			
+			// draw boundary particles as gray circles
+			for (let i = this.sim.numFluidParticles; i < this.sim.numParticles; i++) 
+			{
+				let p = this.sim.particles[i];
+				let r = this.sim.particleRadius;
+				this.c.fillStyle = "#888888";	
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+			}
+			
+			// render selected particle and its neighbors
+			if (this.selectedParticle != -1)
+			{
+				// draw selected particle in red 
+				let p = this.sim.particles[this.selectedParticle];
+				let r = this.sim.particleRadius;
+				this.c.fillStyle = "#DD0000";	
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+				
+				// draw a red circle to show the support radius
+				this.c.strokeStyle = "#FF0000";	
+				this.c.lineWidth = 2;
+				this.c.beginPath();			
+				this.c.arc(px, py, this.sim.supportRadius * this.zoom, 0, Math.PI*2, false); 
+				this.c.closePath();
+				this.c.stroke();
+				
+				// draw neighbors in green
+				for (let j = 0; j < p.neighbors.length; j++) 
+				{
+					let nj = p.neighbors[j];
+					let p_j = this.sim.particles[nj];
+					let r = this.sim.particleRadius;
+					this.c.fillStyle='hsl(130,100%,30%)';
+					let px = this.origin.x + p_j.x * this.zoom;
+					let py = this.origin.y - p_j.y * this.zoom;
+					
+					this.c.beginPath();			
+					this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+					this.c.closePath();
+					this.c.fill();		
+				}
+			}
+			
+
+		}
+		
+		mainLoop()
+		{
+			let t0 = performance.now();
+			
+			this.sim.simulationStep();
+
+			let t1 = performance.now();
+			this.timeSum += t1 - t0;
+			this.counter += 1;
+				
+			if (this.counter % 50 == 0)				
+			{
+				this.timeSum /= this.counter;
+				document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(2);		
+				this.timeSum = 0.0;
+				this.counter = 0;
+			}	
+
+			this.draw();
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));	
+		}
+		
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+		
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);
+				for (let i = 0; i < this.sim.particles.length; i++) 
+				{
+					let p = this.sim.particles[i];
+					let px = this.origin.x + p.x * this.zoom;
+					let py = this.origin.y - p.y * this.zoom;
+					let dx = px - mousePos.x
+					let dy = py - mousePos.y
+					let dist2 = Math.sqrt(dx * dx + dy * dy)
+					if (dist2 < 10)
+					{
+						this.selectedParticle = i;
+						break;
+					}				
+				}			
+			}
+		}
+		
+		getMousePos(canvas, event) 
+		{
+			let rect = canvas.getBoundingClientRect();
+			return {
+				x: event.clientX - rect.left,
+				y: event.clientY - rect.top
+			};
+		}
+		
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+		}
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>

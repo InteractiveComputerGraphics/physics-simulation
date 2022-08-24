@@ -1,0 +1,613 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
+	<title>Mass-Spring-Damper Model</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Mass-Spring-Damper Model</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="700"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="700" height="600" style="border:2px solid #000000;border-radius: 20px;background-color:#FFFFFF">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<div id="plotOutput" style="width: 600px; height: 600px;border:2px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+			</td>
+		</tr>
+		<tr>
+			<td>
+				<table>		
+				<col width="200" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Current time</label></td>
+					<td><span id="time">0.00</span> s</td>
+				</tr>
+				<tr>
+					<td><label>Time per sim. step</label></td>
+					<td><span id="timePerStep">0.00</span> ms</td>
+				</tr>
+				<tr>
+					<td><label for="timeStepSizeInput">Time step size</label></td>
+					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.01" step="0.001"></td>
+				</tr>
+				<tr>
+					<td><label for="restLengthInput">Rest length</label></td>
+					<td><input id="restLengthInput" type="number" value="4.0" step="0.1"></td>
+				</tr>
+				<tr>
+					<td><label for="stiffnessInput">Stiffness</label></td>
+					<td><input onchange="gui.sim.stiffness=parseFloat(value)" id="stiffnessInput" type="number" value="5.0" step="1.0"></td>
+				</tr>
+				<tr>
+					<td><label for="dampingInput">Damping</label></td>
+					<td><input onchange="gui.sim.damping=parseFloat(value)" id="dampingInput" type="number" value="0.0" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="massInput">Mass</label></td>
+					<td><input onchange="gui.sim.mass=parseFloat(value)" id="massInput" type="number" value="0.5" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="timeIntegrationInput">Time integration method</label></td>
+					<td><select onchange="gui.sim.timeIntegrationMethod=value" id="timeIntegrationInput"> 
+						<option>Explicit Euler</option> 
+						<option selected="selected">Symplectic Euler</option> 
+						<option>Runge-Kutta 2</option> 
+						<option>Implicit Euler</option>
+					</select> 
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>Mass spring algorithm:</h2>
+				This example shows a mass spring system that consists of particles linked by damped springs:
+				<ol>
+					<li>compute spring forces</li>
+					<li>time integration to get new particle positions and velocities</li>
+				</ol>
+				
+				Note that the simulation is only conditionally stable since a conditionally stable explicit time integration method is used. 
+				
+			<h3>1. Compute spring forces</h3>
+			
+				<p>In general a spring force can be obtained for any holonomic constraint. 
+				In this example we use distance constraints 
+				$$C_i(\mathbf{x}_{i_1}, \mathbf{x}_{i_2}) = \| \mathbf x_{i_1} -\mathbf x_{i_2} \|-d,$$
+				where $d$ is the rest length between particles $\mathbf{x}_{i_1}$ and  $\mathbf{x}_{i_2}$.</p>
+				
+				<h4>Potential energy</h4>
+				<p>For a scalar constraint we can define a potential energy as:
+				$$E(\mathbf x) = \frac k 2 C(\mathbf x)^2,$$
+				where $k$ is the stiffness of the spring.
+				
+				<h4>General spring force</h4>
+				The spring force for a particle $j$ is then determined by the negative gradient of the potential energy function:
+				$$\mathbf f_j = - \frac{\partial E(\mathbf x)}{\partial \mathbf x_j} = -k \frac{\partial C(\mathbf x)}{\partial \mathbf x_j} C(\mathbf x).$$
+   
+				<h4>General damping force</h4>
+				The corresponding damping force is obtained by using the time derivative of the constraint function:
+				$$\mathbf f^D_j = -\mu \frac{\partial C(\mathbf x)}{\partial \mathbf x_j} \dot{C}(\mathbf x).$$
+			
+				
+				<h4>Constraint gradients:</h4>
+				<p>To compute the spring and damping forces, the constraint gradients are required which are computed as: </p>				
+					$$\begin{align*}
+					 \frac{\partial C_i}{\partial \mathbf x_{i_1}} &= \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|}  \\
+					 \frac{\partial C_i}{\partial \mathbf x_{i_2}} &= - \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|}
+					\end{align*}$$
+					
+				<h4>Spring force</h4>
+				So finally we get the following spring forces for a distance constraint $C_i(\mathbf{x}_{i_1}, \mathbf{x}_{i_2})$:
+					$$\begin{align*}
+					\mathbf f_{i_1} = -k (\| \mathbf x_{i_1} -\mathbf x_{i_2} \|-d) \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|} \\
+					\mathbf f_{i_2} = +k (\| \mathbf x_{i_1} -\mathbf x_{i_2} \|-d) \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|}.
+					\end{align*}$$ 
+				
+				<h4>Damping force</h4>
+				The damping forces for a distance constraint $C_i(\mathbf{x}_{i_1}, \mathbf{x}_{i_2})$ are determined as:
+					$$\begin{align*}
+					\mathbf f^D_{i_1} = -k \left ((\mathbf v_{i_1}- \mathbf v_{i_2}) \cdot \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|} \right ) \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|} \\
+					\mathbf f^D_{i_2} = +k \left ((\mathbf v_{i_1}- \mathbf v_{i_2}) \cdot \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|} \right ) \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|}.
+					\end{align*}$$ 
+			
+			<h3>2. Time integration</h3>
+				Finally, the particles are advected by numerical time integration. In our case we use a symplectic Euler method:
+				$$\begin{align*}
+					\mathbf v(t + \Delta t) &= \mathbf v(t) + \frac{\Delta t}{m} \left (\mathbf f(t) + \mathbf f^D + \mathbf f^{\text{ext}} \right ) \\
+					\mathbf x(t + \Delta t) &= \mathbf x(t) + \Delta t \mathbf v(t + \Delta t),
+				\end{align*}$$
+				where $\mathbf f^{\text{ext}}$ are the external forces.
+			
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+
+	class Simulation
+	{
+		constructor()
+		{
+			this.x = 6.0;
+			this.y = 0.0;
+			this.vx = 0.0;
+			this.vy = 0.0;
+			this.stiffness = 5.0;
+			this.restLength = 4.0;
+			this.damping = 0.05;
+			this.mass = 0.5;
+			this.timeStepSize = 0.01;
+			this.time = 0;
+			this.timeIntegrationMethod = "Symplectic Euler";
+			this.plotValues = {};
+		}
+		
+		computeSpringForce(x, y, vx, vy)
+		{
+			let xl = Math.sqrt(x*x + y*y);
+
+			// compute displacement: C = ||x|| - restLength
+			let C = xl - this.restLength;
+			
+			// determine gradient
+			let gradC_x = 0.0;
+			let gradC_y = 0.0;
+			if (xl > 0.0001)
+			{
+				gradC_x = x/xl; 
+				gradC_y = y/xl; 
+			}
+			
+			// compute spring force
+			let Fs_x = -this.stiffness * C * gradC_x;
+			let Fs_y = -this.stiffness * C * gradC_y;
+			
+			// compute damping force
+			let dot = vx * gradC_x + vy * gradC_y; 	// v*gradC
+			let Fd_x = -this.damping * dot * gradC_x;
+			let Fd_y = -this.damping * dot * gradC_y;
+				
+			return [Fs_x + Fd_x, Fs_y + Fd_y];
+		}
+		
+		explicitEuler()
+		{
+			// compute spring force
+			let force = this.computeSpringForce(this.x, this.y, this.vx, this.vy);
+			
+			// explicit Euler step
+			this.x += this.timeStepSize * this.vx;
+			this.y += this.timeStepSize * this.vy;
+			
+			this.vx += this.timeStepSize/this.mass * force[0];
+			this.vy += this.timeStepSize/this.mass * force[1];
+		}
+		
+		symplecticEuler()
+		{
+			// compute spring force
+			let force = this.computeSpringForce(this.x, this.y, this.vx, this.vy);
+			
+			// symplectic Euler step
+			this.vx += this.timeStepSize/this.mass * force[0];
+			this.vy += this.timeStepSize/this.mass * force[1];
+			
+			this.x += this.timeStepSize * this.vx;
+			this.y += this.timeStepSize * this.vy;
+		}
+		
+		rungeKutta2()
+		{
+			// compute spring force
+			let force1 = this.computeSpringForce(this.x, this.y, this.vx, this.vy);
+			
+			// Runge-Kutta 2 step
+			let k1_x = this.timeStepSize * this.vx;
+			let k1_y = this.timeStepSize * this.vy;
+			
+			let k1_vx = this.timeStepSize/this.mass * force1[0];
+			let k1_vy = this.timeStepSize/this.mass * force1[1];
+			
+			// compute spring force
+			var force2 = this.computeSpringForce(this.x + 0.5*k1_x, this.y + 0.5*k1_y, this.vx + 0.5*k1_vx, this.vy + 0.5*k1_vy);
+			
+			let k2_x = this.timeStepSize * (this.vx + 0.5*k1_vx);
+			let k2_y = this.timeStepSize * (this.vy + 0.5*k1_vy);
+			
+			let k2_vx = this.timeStepSize/this.mass * force2[0];
+			let k2_vy = this.timeStepSize/this.mass * force2[1];
+			
+			this.x += k2_x;
+			this.y += k2_y;
+			
+			this.vx += k2_vx;
+			this.vy += k2_vy;
+		}
+		
+		implicitEuler()
+		{
+			// compute spring force
+			let f0 = this.computeSpringForce(this.x, this.y, this.vx, this.vy);
+								
+			// compute df/dx
+			let df_dx = this.compute_dF_dx(this.x, this.y);
+			
+			// determine matrix:
+			// A =  I - h^2 M^-1 df/dx 
+			// Note that we set df/dv to zero. This means that damping is only handled explicitly.
+			let h = this.timeStepSize;
+			let h2 = h*h;
+			
+			// M^-1 * df/dx
+			let Minv_df_dx = [[df_dx[0][0]/this.mass, df_dx[0][1]/this.mass], [df_dx[1][0]/this.mass, df_dx[1][1]/this.mass]];
+			
+			let A = [[1.0 - h2*Minv_df_dx[0][0], -h2*Minv_df_dx[0][1]], 
+					[-h2*Minv_df_dx[1][0], 1.0-h2*Minv_df_dx[1][1]]];
+			
+			// determine right hand side of linear system
+			// b = h Minv (f_0 + h df/dx v_0)
+			let df_dx_v = this.mult(df_dx, [this.vx, this.vy]);
+			let b = [h/this.mass*(f0[0] + h*df_dx_v[0]), h/this.mass*(f0[1] + h*df_dx_v[1])];
+			
+			// solve linear system by inverting A
+			let deltaV = this.mult(this.inverse(A), b);
+				
+			// implicit Euler step
+			this.vx += deltaV[0];
+			this.vy += deltaV[1];
+			
+			this.x += h * this.vx;
+			this.y += h * this.vy;
+		}
+		
+		// matrix vector multiplication
+		mult(A, x)
+		{
+			return [A[0][0] * x[0] + A[0][1]*x[1], A[1][0] * x[0] + A[1][1]*x[1]];
+		}
+		
+		// inverse of a matrix A
+		inverse(A)
+		{
+			let det = A[0][0]*A[1][1] - A[0][1]*A[1][0];
+			if (Math.abs(det) > 1.0e-6)
+				return [[A[1][1]/det, -A[0][1]/det], [-A[1][0]/det, A[0][0]/det]];
+			else 
+				return A;
+		}
+		
+		compute_dF_dx(x, y)
+		{
+			let xl = Math.sqrt(x*x + y*y);
+			
+			// determine normalized x
+			let hatX = [0,0];
+			if (xl > 0.0001)
+				hatX = [x/xl, y/xl]; 
+				
+			// determine x*x^T
+			let xxT = [[hatX[0]*hatX[0], hatX[0]*hatX[1]], [hatX[1]*hatX[0], hatX[1]*hatX[1]]];
+					
+			// dhatX_dx = (I- hatX*hatX^T) / ||x||
+			let hatX_dx = [[(1.0 - xxT[0][0]) / xl, -xxT[0][1] / xl], [-xxT[1][0] / xl, (1.0 - xxT[1][1]) / xl]];
+			
+			// df_dx = -k (dC/dx*dC/x^T + d^2C/d^2x C)
+			let CCT = xxT;
+			let C = xl - this.restLength;
+			return [[-this.stiffness * (CCT[0][0] + hatX_dx[0][0] * C), -this.stiffness * (CCT[0][1] + hatX_dx[0][1] * C)], 
+			[-this.stiffness * (CCT[1][0] + hatX_dx[1][0] * C), -this.stiffness * (CCT[1][1] + hatX_dx[1][1] * C)]];	
+		}
+		
+		
+		plotValue(name, val)
+		{
+			if (this.plotValues[name] == undefined)
+				this.plotValues[name] = [val];
+			else
+				this.plotValues[name].push(val);
+		}
+		
+		// simulation step
+		simulationStep()
+		{	
+			let dt = this.timeStepSize;
+			
+			// time integration step
+			if (this.timeIntegrationMethod == "Explicit Euler")
+				this.explicitEuler();
+			else if (this.timeIntegrationMethod == "Symplectic Euler")
+				this.symplecticEuler();
+			else if (this.timeIntegrationMethod == "Runge-Kutta 2")
+				this.rungeKutta2();
+			else if (this.timeIntegrationMethod == "Implicit Euler")
+				this.implicitEuler();
+			
+			// plot energies
+			let kE = 0.5*this.mass*(this.vx*this.vx + this.vy*this.vy);
+			let xl = Math.sqrt(this.x*this.x + this.y*this.y);
+			let pE = 0.5*this.stiffness * (xl - this.restLength)*(xl - this.restLength);
+			this.plotValue('Kinetic energy', kE);
+			this.plotValue('Potential energy', pE);
+			this.plotValue('Total energy', (kE+pE));
+			
+			// update simulation time
+			this.time = this.time + dt;
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.origin = { x : this.canvas.width / 2 -200, y : this.canvas.height/2};
+			this.zoom = 80;
+			this.particleRadius = 0.025;
+			this.selectedParticle = -1;
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			delete this.sim;
+			this.sim = new Simulation();
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+
+			this.sim.stiffness = parseFloat(document.getElementById('stiffnessInput').value);
+			this.sim.damping = parseFloat(document.getElementById('dampingInput').value);
+			this.sim.timeStepSize = parseFloat(document.getElementById('timeStepSizeInput').value);
+			this.sim.mass = parseFloat(document.getElementById('massInput').value);
+			this.sim.restLength = parseFloat(document.getElementById('restLengthInput').value);
+			this.sim.timeIntegrationMethod = document.getElementById('timeIntegrationInput').value;
+
+			this.mainLoop();
+		}
+		
+		drawCoordinateSystem()
+		{
+			// draw x-axis
+			this.c.strokeStyle = "#FF0000";
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x+1*this.zoom, this.origin.y);
+			this.c.stroke();	
+
+			// draw y-axis
+			this.c.strokeStyle = "#00FF00";	
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x, this.origin.y-1*this.zoom);
+			this.c.stroke();		
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			
+			this.drawCoordinateSystem();
+			
+			// draw springs as lines
+			this.c.strokeStyle = "#666666";
+			let num_steps = 50;
+			let dx = this.sim.x / num_steps;
+			let x = 0.0;
+			let y = 0.0;
+			for (let i = 0; i < num_steps; i++) 
+			{													
+				this.c.beginPath();
+				this.c.moveTo(this.origin.x + x*this.zoom, this.origin.y - y*this.zoom);
+				
+				if (i == 0)
+					y = -0.25;
+				else if (i == num_steps-1)
+					y = 0.0;
+				else if (i % 2 == 0)
+					y -= 0.5;
+				else 
+					y += 0.5;
+				
+				this.c.lineTo(this.origin.x + (x+dx)*this.zoom, this.origin.y - y*this.zoom);
+				this.c.stroke();	
+				x+=dx;
+			}
+			
+			// draw line at rest length
+			this.c.strokeStyle = "#00AA11";
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x + this.sim.restLength*this.zoom, this.origin.y+0.5*this.zoom);
+			this.c.lineTo(this.origin.x + this.sim.restLength*this.zoom, this.origin.y-0.5*this.zoom);
+			this.c.stroke();	
+			
+			// draw particles as circles
+			this.c.fillStyle = "#BB0000";				
+			this.c.beginPath();			
+			this.c.arc(this.origin.x, this.origin.y, 0.1 * this.zoom, 0, Math.PI*2, true); 
+			this.c.closePath();
+			this.c.fill();
+			
+			this.c.fillStyle = "#0000FF";	
+			let px = this.origin.x + this.sim.x * this.zoom;
+			let py = this.origin.y - this.sim.y * this.zoom;
+				
+			this.c.beginPath();			
+			this.c.arc(px, py, 0.1 * this.zoom, 0, Math.PI*2, true); 
+			this.c.closePath();
+			this.c.fill();
+		}
+		
+		mainLoop()
+		{
+			// perform multiple sim steps per render step
+			for (let i=0; i < 8; i++)
+			{
+				let t0 = performance.now();
+				
+				this.sim.simulationStep();
+
+				let t1 = performance.now();
+				this.timeSum += t1 - t0;
+				this.counter += 1;
+					
+				if (this.counter % 50 == 0)				
+				{
+					this.timeSum /= this.counter;
+					document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(2);		
+					this.timeSum = 0.0;
+					this.counter = 0;
+				}	
+				document.getElementById("time").innerHTML = this.sim.time.toFixed(2);	
+			}			
+
+			this.draw();
+			this.updatePlot();
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+		}
+		
+		updatePlot() 
+		{
+			let data = [];
+			for(let key in this.sim.plotValues)
+			{
+				let value = this.sim.plotValues[key];
+				
+				while(this.sim.plotValues[key].length > 1000)
+					this.sim.plotValues[key].shift();
+				
+				let trace = {
+					y: value,
+					type: 'scatter',
+					name: key
+				};
+				data.push(trace);		
+			}
+			
+			let layout = {
+				title: 'Energy',
+				yaxis: {
+					autorange: true,
+					range: [0, 3000],
+					type: 'linear'
+				}
+			}
+			
+			Plotly.newPlot('plotOutput', data, layout);
+		}
+
+		
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+		
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);
+				for (let i = 0; i < this.sim.particles.length; i++) 
+				{
+					let p = this.sim.particles[i];
+					let px = this.origin.x + p.x * this.zoom;
+					let py = this.origin.y - p.y * this.zoom;
+					let dx = px - mousePos.x
+					let dy = py - mousePos.y
+					let dist2 = Math.sqrt(dx * dx + dy * dy)
+					if (dist2 < 10)
+					{
+						this.selectedParticle = i;
+						break;
+					}				
+				}			
+			}
+		}
+		
+		getMousePos(canvas, event) 
+		{
+			let rect = canvas.getBoundingClientRect();
+			return {
+				x: event.clientX - rect.left,
+				y: event.clientY - rect.top
+			};
+		}
+	
+		mouseMove(event)
+		{
+			if (this.selectedParticle != -1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);		
+				this.sim.particles[this.selectedParticle].x = (mousePos.x - this.origin.x) / this.zoom;
+				this.sim.particles[this.selectedParticle].y = -(mousePos.y - this.origin.y) / this.zoom;
+			}
+		}
+		
+		mouseUp(event) 
+		{
+			this.selectedParticle = -1;
+		}
+		
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+		}
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>

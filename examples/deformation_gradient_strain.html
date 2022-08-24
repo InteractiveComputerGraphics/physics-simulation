@@ -1,0 +1,401 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Deformation Gradient - Strain</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Deformation Gradient - Strain</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table style="text-align:left">		
+				<col width="100"> 
+				<col width="100"> 
+				<tr>
+					<td><label for="translation_x">Translation - x</label></td>
+					<td><input onchange="gui.recompute()" id="translation_x" type="number" value="0.0" step="0.1"></td>
+				</tr>
+				<tr>
+					<td><label for="translation_y">Translation - y</label></td>
+					<td><input onchange="gui.recompute()" id="translation_y" type="number" value="0.0" step="0.1"></td>
+				</tr>
+				<tr>
+					<td><label for="rotation">Rotation</label></td>
+					<td><input onchange="gui.recompute()" id="rotation" type="number" value="0" step="0.1"></td>
+				</tr>
+				<tr>
+					<td><label for="scale_x">Scale - x</label></td>
+					<td><input onchange="gui.recompute()" id="scale_x" type="number" value="1.0" step="0.1"></td>
+				</tr>
+				<tr>
+					<td><label for="scale_y">Scale - y</label></td>
+					<td><input onchange="gui.recompute()" id="scale_y" type="number" value="1.0" step="0.1"></td>
+				</tr>
+				<tr>
+					<td><label for="shear_x">Shear - x</label></td>
+					<td><input onchange="gui.recompute()" id="shear_x" type="number" value="0.0" step="0.1"></td>
+				</tr>
+				<tr>
+					<td><label for="shear_y">Shear - y</label></td>
+					<td><input onchange="gui.recompute()" id="shear_y" type="number" value="0.0" step="0.1"></td>
+				</tr>
+				<tr>
+					<td colspan="2">		
+						<h4>Transformation matrix:</h4>
+						<p id="eq:T">
+						$$\mathbf{T} = \mathbf{R} \mathbf{S} \mathbf{U} = \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix}$$
+						</p>
+						<h4>Deformation gradient:</h4>
+						<p id="eq:F">
+						$$\mathbf{F} = \mathbf{D}_s \mathbf{D}_m^{-1} = \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix}$$ 						
+						</p>
+						<h4>Green strain tensor:</h4>
+						<p id="eq:E">
+						$$\mathbf{E}_\text{Green} = \frac12 (\mathbf{F}^T \mathbf{F} - \mathbf{I}) = \begin{pmatrix} 0 & 0 \\ 0 & 0 \end{pmatrix}$$
+						</p>
+						<h4>Cauchy strain tensor:</h4>
+						<p id="eq:ECauchy">
+						$$\mathbf{E}_\text{Cauchy} = \frac12 (\mathbf{F} + \mathbf{F}^T) - \mathbf{I} = \begin{pmatrix} 0 & 0 \\ 0 & 0 \end{pmatrix}$$
+						</p>						
+					</td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>Computation of deformation gradient and strain tensor</h2>
+				<p>This example shows a single linear finite element (triangle) which is deformed by a transformation matrix. This matrix is computed as
+				$$\mathbf{T} = \mathbf{R} \mathbf{S} \mathbf{U},$$
+				with the rotation matrix
+				$$\mathbf{R} = \begin{pmatrix} \cos{\alpha} & -\sin{\alpha} \\ \sin{\alpha} & \cos{\alpha} \end{pmatrix},$$
+				the scaling matrix
+				$$\mathbf{S} = \begin{pmatrix} s_x & 0 \\ 0 & s_y \end{pmatrix},$$
+				the shearing matrix
+				$$\mathbf{U} = \begin{pmatrix} 1 & u_x \\ 0 & 1 \end{pmatrix} \begin{pmatrix} 1 & 0 \\ u_y & 1 \end{pmatrix},$$
+				the scaling factors $s_x$, $s_y$, and the shear values $u_x$, $u_y$.
+				</p>
+				
+				<p>The deformation gradient for such an element can be determined as
+				$$\mathbf{F} = \mathbf{D}_s \mathbf{D}_m^{-1},$$
+				where
+				$$\mathbf{D}_s = \begin{pmatrix} \mathbf{x}_1 - \mathbf{x}_0 &  \mathbf{x}_2 - \mathbf{x}_0 \end{pmatrix},$$
+				$$\mathbf{D}_m = \begin{pmatrix} \mathbf{X}_1 - \mathbf{X}_0 &  \mathbf{X}_2 - \mathbf{X}_0 \end{pmatrix}.$$
+				Here $\mathbf{X}_i$ denote the reference positions of the triangle and $\mathbf{x}_i$ the deformed configuration.
+				</p>
+				
+				<p>This example shows that the deformation gradient extracts exactly the original transformation from the deformed configuration of the triangle vertices. Moreover, we can see that the linear Cauchy strain tensor is not zero for a pure rotation. This means that a rotation, which is a rigid body transformation, leads to a non-zero strain which can cause artifacts in the simulation. 
+				</p>
+			
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Simulation
+	{
+		constructor()
+		{
+			// initialize values
+			this.x0 = [[0,0], [6,0], [3,5]];
+			this.x = [[0,0], [6,0], [3,5]];
+			this.T = [[1,0], [0,1]];
+			this.F = [[1,0], [0,1]];	
+			this.E_green = [[0,0], [0,0]];
+			this.E_cauchy = [[0,0], [0,0]];
+		}
+		
+		reset()
+		{
+			this.T = [[1,0], [0,1]];
+			for (let i = 0; i < this.x.length; i++) 
+			{
+				this.x[i][0] = this.x0[i][0];
+				this.x[i][1] = this.x0[i][1];
+			}
+		}
+		
+		matrixSubtract(A, B)
+		{
+			return [[A[0][0] - B[0][0], A[0][1]-B[0][1]], 
+					[A[1][0] - B[1][0], A[1][1]-B[1][1]]];
+		}
+		
+		matrixAdd(A, B)
+		{
+			return [[A[0][0] + B[0][0], A[0][1]+B[0][1]], 
+					[A[1][0] + B[1][0], A[1][1]+B[1][1]]];
+		}
+		
+		matrixMult(A, B)
+		{
+			return [[A[0][0]*B[0][0] + A[0][1]*B[1][0], A[0][0]*B[0][1] + A[0][1]*B[1][1]], 
+					[A[1][0]*B[0][0] + A[1][1]*B[1][0], A[1][0]*B[0][1] + A[1][1]*B[1][1]]];
+		}
+		
+		matrixScalarMult(A, s)
+		{
+			return [[A[0][0]*s, A[0][1]*s], [A[1][0]*s, A[1][1]*s]];
+		}
+		
+		matrixVecMult(A, x)
+		{
+			return [A[0][0]*x[0] + A[0][1]*x[1], A[1][0]*x[0] + A[1][1]*x[1]];
+		}
+		
+		transpose(A)
+		{
+			return [[A[0][0], A[1][0]], 
+					[A[0][1], A[1][1]]];
+		}
+		
+		inverse(A)
+		{
+			// determinant
+			let det = A[0][0]*A[1][1] - A[0][1]*A[1][0];
+			
+			// inverse of A
+			return [[A[1][1]/det, -A[0][1]/det], [-A[1][0]/det, A[0][0]/det]]; 
+		}
+	
+		rotate(angle)
+		{
+			// convert angle from degree to radians
+			let ang = angle / 180.0 * Math.PI;
+			this.T = this.matrixMult(this.T, [[Math.cos(ang), -Math.sin(ang)], [Math.sin(ang), Math.cos(ang)]]);
+		}
+		
+		scale(s)
+		{
+			this.T = this.matrixMult(this.T, [[s[0], 0], [0, s[1]]]);
+		}
+		
+		move(t)
+		{
+			for (let i = 0; i < this.x.length; i++) 
+			{
+				this.x[i][0] += t[0];
+				this.x[i][1] += t[1];
+			}
+		}
+		
+		shear(s)
+		{
+			// shear parallel to x axis
+			this.T = this.matrixMult(this.T, [[1, s[0]], [0, 1]]);
+			// shear parallel to y axis
+			this.T = this.matrixMult(this.T, [[1, 0], [s[1], 1]]);
+		}
+		
+		// compute deformation gradient
+		computeF()
+		{
+			let x = this.x;
+			let x0 = this.x0;
+			let Dm = [[x0[1][0] - x0[0][0], x0[2][0] - x0[0][0]], 
+					  [x0[1][1] - x0[0][1], x0[2][1] - x0[0][1]]];
+			let Ds = [[x[1][0] - x[0][0], x[2][0] - x[0][0]], 
+					  [x[1][1] - x[0][1], x[2][1] - x[0][1]]];
+			
+			this.F = this.matrixMult(Ds, this.inverse(Dm));
+		}
+		
+		// compute Green strain tensor
+		computeGreenStrain()
+		{	
+			let FT_F = this.matrixMult(this.transpose(this.F), this.F);
+			let id = [[1,0],[0,1]];
+			this.E_green = this.matrixScalarMult(this.matrixSubtract(FT_F, id), 0.5);
+		}
+		
+		// compute Cauchy strain tensor
+		computeCauchyStrain()
+		{	
+			let F_FT = this.matrixAdd(this.F, this.transpose(this.F));
+			let id = [[1,0],[0,1]];
+			this.E_cauchy = this.matrixScalarMult(F_FT, 0.5);
+			this.E_cauchy = this.matrixSubtract(this.E_cauchy, id);
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2};
+			this.zoom = 50;
+			this.particleRadius = 0.15;
+			this.selected = false;
+			
+			// register mouse event listeners (zoom)
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// recompute all values
+		recompute()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			if (this.sim == undefined)
+				this.sim = new Simulation();
+			this.sim.reset();
+			
+			// rotate: T = T * R
+			let angle  = parseFloat(document.getElementById('rotation').value);
+			this.sim.rotate(angle);
+			
+			// scale: T = T * S
+			let sx  = parseFloat(document.getElementById('scale_x').value);
+			let sy  = parseFloat(document.getElementById('scale_y').value);
+			this.sim.scale([sx,sy]);
+			
+			// shear: T = T * S
+			let shearx  = parseFloat(document.getElementById('shear_x').value);
+			let sheary  = parseFloat(document.getElementById('shear_y').value);
+			this.sim.shear([shearx,sheary]);
+			
+			// transform points: x = T*x;
+			for (let i = 0; i < this.sim.x.length; i++) 
+				this.sim.x[i] = this.sim.matrixVecMult(this.sim.T, this.sim.x0[i]);
+				
+			// move
+			let tx  = parseFloat(document.getElementById('translation_x').value);
+			let ty  = parseFloat(document.getElementById('translation_y').value);
+			this.sim.move([tx,ty]);
+			
+			this.sim.computeF();
+			this.sim.computeGreenStrain();
+			this.sim.computeCauchyStrain();
+			
+			let F = this.sim.F;
+			let T = this.sim.T;
+			let E_green = this.sim.E_green;
+			let E_cauchy = this.sim.E_cauchy;
+			let elem = document.getElementById("eq:F").innerHTML = "$$\\mathbf{F} = \\mathbf{D}_s \\mathbf{D}_m^{-1} = \\begin{pmatrix} " + F[0][0].toFixed(3) + " \& " + F[0][1].toFixed(3) + " \\\\ " + F[1][0].toFixed(3) + " \& + " + F[1][1].toFixed(3) + "\\end{pmatrix}$$";
+			MathJax.Hub.Queue(["Typeset",MathJax.Hub,elem]);
+			
+			elem = document.getElementById("eq:T").innerHTML = "$$\\mathbf{T} = \\mathbf{R} \\mathbf{S} \\mathbf{U}= \\begin{pmatrix} " + T[0][0].toFixed(3) + " \& " + T[0][1].toFixed(3) + " \\\\ " + T[1][0].toFixed(3) + " \& + " + T[1][1].toFixed(3) + "\\end{pmatrix}$$";
+			MathJax.Hub.Queue(["Typeset",MathJax.Hub,elem]);
+			
+			elem = document.getElementById("eq:E").innerHTML = "$$\\mathbf{E}_\\text{Green} = \\frac12 (\\mathbf{F}^T \\mathbf{F} - \\mathbf{I}) = \\begin{pmatrix} " + E_green[0][0].toFixed(3) + " \& " + E_green[0][1].toFixed(3) + " \\\\ " + E_green[1][0].toFixed(3) + " \& + " + E_green[1][1].toFixed(3) + "\\end{pmatrix}$$";
+			MathJax.Hub.Queue(["Typeset",MathJax.Hub,elem]);
+		
+			elem = document.getElementById("eq:ECauchy").innerHTML = "$$\\mathbf{E}_\\text{Cauchy} = \\frac12 (\\mathbf{F} + \\mathbf{F}^T) - \\mathbf{I} = \\begin{pmatrix} " + E_cauchy[0][0].toFixed(3) + " \& " + E_cauchy[0][1].toFixed(3) + " \\\\ " + E_cauchy[1][0].toFixed(3) + " \& + " + E_cauchy[1][1].toFixed(3) + "\\end{pmatrix}$$";
+			MathJax.Hub.Queue(["Typeset",MathJax.Hub,elem]);	
+		
+				
+			this.draw();
+		}
+		
+		drawCoordinateSystem()
+		{
+			// draw x-axis
+			this.c.strokeStyle = "#FF0000";
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x+1*this.zoom, this.origin.y);
+			this.c.stroke();	
+
+			// draw y-axis
+			this.c.strokeStyle = "#00FF00";	
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x, this.origin.y-1*this.zoom);
+			this.c.stroke();		
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			
+			this.drawCoordinateSystem();
+			
+			// draw triangle
+			this.c.strokeStyle = "#666666";
+
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x + this.sim.x[0][0]*this.zoom, this.origin.y - this.sim.x[0][1]*this.zoom);
+			this.c.lineTo(this.origin.x + this.sim.x[1][0]*this.zoom, this.origin.y - this.sim.x[1][1]*this.zoom);
+			this.c.lineTo(this.origin.x + this.sim.x[2][0]*this.zoom, this.origin.y - this.sim.x[2][1]*this.zoom);
+			this.c.lineTo(this.origin.x + this.sim.x[0][0]*this.zoom, this.origin.y - this.sim.x[0][1]*this.zoom);
+			this.c.stroke();	
+			
+			
+			// draw particles as circles
+			for (let i = 0; i < this.sim.x.length; i++) 
+			{
+				let p = this.sim.x[i];
+				let r = this.particleRadius;
+				this.c.fillStyle = "#00BB00";	
+				this.c.strokeStyle = "#000000";
+				this.c.lineWidth = 2;
+				let px = this.origin.x + p[0] * this.zoom;
+				let py = this.origin.y - p[1] * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+				this.c.stroke();
+			}
+			
+			let r = 5.0*this.particleRadius;
+			if (this.selected)
+				this.c.fillStyle = "#FF0000";	
+			else 
+				this.c.fillStyle = "#00BB00";	
+			let px = this.origin.x + this.sim.emitter_x * this.zoom;
+			let py = this.origin.y - this.sim.emitter_y * this.zoom;
+			
+			this.c.beginPath();			
+			this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+			this.c.closePath();
+			this.c.fill();
+		}
+
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+			this.requestID = window.requestAnimationFrame(this.draw.bind(this));	
+		}
+	}
+	
+	gui = new GUI();
+	gui.recompute();
+</script>
+
+</body>
+</html>

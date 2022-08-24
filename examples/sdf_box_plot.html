@@ -1,0 +1,359 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Signed Distance Function - Box</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Signed Distance Function - Box</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table>		
+				<col width="180" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Distance</label></td>
+					<td><span id="distance">0</span></td>
+				</tr>
+				<tr>
+					<td><label for="toleranceInput">Tolerance</label></td>
+					<td><input onchange="if (value < 0.0) value = 0.0; gui.sim.tolerance=parseFloat(value); gui.update()" id="toleranceInput" type="number" value="0.0" min="0" step="0.1"></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>Signed distance function of a box:</h2>
+				The signed distance function of a box with width $w$ and height $h$ is defined as:
+				$$\Phi(\mathbf{x}) = \min(\max(d_x,d_y),0.0) + \left \|\begin{pmatrix} \max(d_x,0.0) \\ \max(d_y,0.0) \end{pmatrix} \right \| - \text{tolerance},$$
+				where 
+				$$d = \begin{pmatrix} |x - x_{\text{box}}| - 0.5 w \\ |y - y_{\text{box}}| - 0.5 h \end{pmatrix}$$.
+				In the example $\mathbf x$ is the red point, $\mathbf{x}_{\text{box}}$ the blue point and the closest point to $\mathbf x$ on the surface of the sphere is rendered in yellow.
+				
+			<h3>Surface normal vector</h3>
+			
+			<p>The normal vector is approximated using central differences, where the derivative of a function $f(x)$ is approximated by 
+			$$
+				\frac{\partial f(x)}{\partial x}  \approx \frac{f(x+\varepsilon) - f(x-\varepsilon)}{2\varepsilon}, 
+			$$
+			where $\varepsilon$ is a small constant (in our example $\varepsilon = 10^{-6}). </p>
+			
+			<p>Since the normal vector is defined as 
+			$$
+			\mathbf n = \frac{\partial \Phi(\mathbf{x})}{\mathbf x},
+			$$
+			the normal can be simply approximated by applying central differences on the x- and the y-component of the function $\Phi(\mathbf{x})$.
+			</p> 
+			
+			<h3>Closest point on the surface</h3>
+			The closest point $\mathbf s$ on the surface of the box (yellow) can be determined by starting at the point $\mathbf x$ (red) and going by the signed distance in the direction of the negative normal vector: 
+			$$\mathbf s = \mathbf x - \Phi(\mathbf{x}) \mathbf n.$$
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Simulation
+	{
+		constructor()
+		{
+			this.x = 7.0;
+			this.y = 0.0;
+			this.box_x = 1.0;
+			this.box_y = 2.0;
+			this.box_w = 12.0;
+			this.box_h = 8.0;
+			this.nx = 0.0;
+			this.ny = 0.0;
+			this.sx = 0.0;
+			this.sy = 0.0;
+			this.distance = 0.0;
+			this.tolerance = 0.0;
+		}
+				
+		// compute signed distance of a point x to a box
+		signedDistanceFct(x, y)
+		{
+			let xLocal_x = x - this.box_x;
+			let xLocal_y = y - this.box_y;
+			let dx = Math.abs(xLocal_x) - 0.5*this.box_w;
+			let dy = Math.abs(xLocal_y) - 0.5*this.box_h;
+			let dxm = Math.max(dx,0.0);
+			let dym = Math.max(dy,0.0);
+			let norm = Math.sqrt(dxm*dxm + dym*dym);
+			return Math.min(Math.max(dx, dy), 0.0) + norm - this.tolerance;
+		}
+		
+		// approximate gradient of distance function by central differences
+		approximateNormal(x, y)
+		{
+			let eps = 1e-6;
+			let n = [0,0];
+			let x0 = [x, y];
+			let xTmp = [x, y];
+			for (let i = 0; i < 2; i++) 
+			{
+				xTmp[i] = x0[i] + eps;
+				let ep = this.signedDistanceFct(xTmp[0], xTmp[1]);
+				
+				xTmp[i] = x0[i] - eps;
+				let em = this.signedDistanceFct(xTmp[0], xTmp[1]);
+				
+				n[i] = (ep - em) * (1.0 / (2.0*eps));
+			}	
+			let	nl = Math.sqrt(n[0]*n[0] + n[1]*n[1]);
+			if (nl > 0.001)
+			{
+				this.nx = n[0] / nl;
+				this.ny = n[1] / nl;
+			}
+		}
+		
+		// simulation step
+		simulationStep()
+		{		
+			// compute signed distance and normal
+			this.distance = this.signedDistanceFct(this.x, this.y);
+			this.approximateNormal(this.x, this.y);
+
+			// compute closest point on surface
+			this.sx = this.x - this.distance * this.nx;
+			this.sy = this.y - this.distance * this.ny;
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2};
+			this.zoom = 30;
+			this.particleRadius = 0.25;
+			this.selected = 0;
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// update GUI
+		update()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			if (this.sim == undefined)
+				this.sim = new Simulation();
+						
+			this.sim.tolerance = parseFloat(document.getElementById('toleranceInput').value);
+			
+			this.mainLoop();
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+				
+			//let imgData = this.c.createImageData(this.canvas.width, this.canvas.height);
+			let imgData = this.c.getImageData(0, 0, this.canvas.width, this.canvas.height);
+			const data = imgData.data;
+			for(let py = 0; py < imgData.height; py++)
+			{
+				for(let px = 0; px < imgData.width; px++)
+				{
+					let x = (px - this.origin.x ) / this.zoom;
+					let y = (py - this.origin.y ) / this.zoom;
+					let dx = x;
+					let dy = -y;
+					let d = this.sim.signedDistanceFct(dx, dy);
+					if (d < -0.05)
+					{
+						imgData.data[4 * (py * imgData.width + px)] = 0; 
+						imgData.data[4 * (py * imgData.width + px) + 1] = 0; 
+						imgData.data[4 * (py * imgData.width + px) + 2] = Math.floor(255*(1.0 + d/5)); 	
+					}
+					else if (d > 0.05)
+					{
+						imgData.data[4 * (py * imgData.width + px) + 1] = Math.floor(255*(1.0 - d/5));
+					}
+					else 
+					{
+						imgData.data[4 * (py * imgData.width + px) + 0] = 200;
+					}
+					imgData.data[4 * (py * imgData.width + px) + 3] = 255; 
+				}
+			}
+			this.c.putImageData(imgData, 0, 0);
+			
+			// draw c
+			let r = this.particleRadius;
+			this.c.strokeStyle = "#000000";
+			this.c.lineWidth = 2;
+			this.c.fillStyle = "#0033BB";	
+			let px = this.origin.x + this.sim.box_x * this.zoom;
+			let py = this.origin.y - this.sim.box_y * this.zoom;
+			
+			this.c.beginPath();			
+			this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+			this.c.closePath();
+			this.c.fill();
+			this.c.stroke();
+			
+			// draw circle with radius
+			this.c.strokeStyle = "#FF0000";
+			this.c.lineWidth = 3;
+			this.c.beginPath();			
+			this.c.arc(px, py, this.sim.radius * this.zoom, 0, Math.PI*2, false); 
+			this.c.closePath();
+			this.c.stroke();
+			
+			// draw sx
+			this.c.fillStyle = "#FFCC00";	
+			this.c.strokeStyle = "#000000";
+			this.c.lineWidth = 2;
+			px = this.origin.x + this.sim.sx * this.zoom;
+			py = this.origin.y - this.sim.sy * this.zoom;
+			
+			let p2x = this.origin.x + (this.sim.sx + 3*this.sim.nx) * this.zoom;
+			let p2y = this.origin.y - (this.sim.sy + 3*this.sim.ny) * this.zoom;
+			this.c.beginPath();			
+			this.c.moveTo(px, py); 
+			this.c.lineTo(p2x, p2y);
+			this.c.stroke();
+			
+			this.c.beginPath();			
+			this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+			this.c.closePath();
+			this.c.fill();
+			this.c.stroke();
+			
+			// draw x
+			this.c.fillStyle = "#FF0000";	
+			px = this.origin.x + this.sim.x * this.zoom;
+			py = this.origin.y - this.sim.y * this.zoom;
+			
+			this.c.beginPath();			
+			this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+			this.c.closePath();
+			this.c.fill();
+			this.c.stroke();
+		}
+		
+		mainLoop()
+		{
+			this.sim.simulationStep();			
+			document.getElementById("distance").innerHTML = this.sim.distance.toFixed(2);	
+			this.draw();
+		}
+		
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+		
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);
+				let px = this.origin.x + this.sim.x * this.zoom;
+				let py = this.origin.y - this.sim.y * this.zoom;
+				let pcx = this.origin.x + this.sim.box_x * this.zoom;
+				let pcy = this.origin.y - this.sim.box_y * this.zoom;
+				let dx = px - mousePos.x;
+				let dy = py - mousePos.y;
+				let dcx = pcx - mousePos.x;
+				let dcy = pcy - mousePos.y;
+				let dist1 = Math.sqrt(dx * dx + dy * dy);
+				if (dist1 < 10)
+				{
+					this.selected = 1;
+					return;
+				}
+				let dist2 = Math.sqrt(dcx * dcx + dcy * dcy);
+				if (dist2 < 10)
+					this.selected = 2;
+				else
+					this.selected = 0;
+			}
+		}
+		
+		getMousePos(canvas, event) 
+		{
+			let rect = canvas.getBoundingClientRect();
+			return {
+				x: event.clientX - rect.left,
+				y: event.clientY - rect.top
+			};
+		}
+	
+		mouseMove(event)
+		{
+			let mousePos = this.getMousePos(this.canvas, event);		
+			if (this.selected == 1)
+			{
+				this.sim.x = (mousePos.x - this.origin.x) / this.zoom;
+				this.sim.y = -(mousePos.y - this.origin.y) / this.zoom;
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+			}
+			else if (this.selected == 2)
+			{
+				this.sim.box_x = (mousePos.x - this.origin.x) / this.zoom;
+				this.sim.box_y = -(mousePos.y - this.origin.y) / this.zoom;
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+			}
+		}
+		
+		mouseUp(event) 
+		{
+			this.selected = 0;
+		}
+		
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+			this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+		}
+	}
+	
+	gui = new GUI();
+	gui.update();
+</script>
+
+</body>
+</html>

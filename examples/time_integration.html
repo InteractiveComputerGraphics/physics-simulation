@@ -1,0 +1,443 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Time integration</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Time integration</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table>		
+				<col width="180" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Current time</label></td>
+					<td><span id="time">0.00</span> s</td>
+				</tr>
+				<tr>
+					<td><label for="timeStepSizeInput">Time step size</label></td>
+					<td><input onchange="gui.restart()" id="timeStepSizeInput" type="number" value="0.05" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="timeIntegrationInput">Time integration method</label></td>
+					<td><select onchange="gui.restart()" id="timeIntegrationInput"> 
+						<option>Explicit Euler</option> 
+						<option selected="selected">Symplectic Euler</option> 
+						<option>Runge-Kutta 2</option> 
+					</select> 
+				</tr>
+				<tr>
+					<td><label for="gravityInput">Gravity</label></td>
+					<td><input onchange="gui.restart()" id="gravityInput" type="number" value="-9.81" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="massInput">Mass</label></td>
+					<td><input onchange="gui.restart()" id="massInput" type="number" value="1.0" step="0.01"></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>Time integration methods:</h2>
+				This example shows the motion of a particle with an initial velocity. Moreover, a constant gravitational acceleration is acting on the particle. In this special case an analytic solution can be computed as:
+				$$\begin{align*}
+					\mathbf x(t + \Delta t) &= \mathbf x(t) + \Delta t \mathbf v(t) + \frac12 \Delta t^2 \mathbf a^\text{grav} \\
+					\mathbf v(t + \Delta t) &= \mathbf v(t) + \Delta t \mathbf a^\text{grav} .
+				\end{align*}$$
+				The motion determined using this analytic solution is plotted in green and can be compared with different numerical solutions that are introduced in the following.
+				
+			<h3>Explicit Euler</h3>
+			
+				The explicit Euler method is a first-order accurate method for solving ordinary differential equations (ODEs):
+				$$\begin{align*}
+					\mathbf x(t + \Delta t) &= \mathbf x(t) + \Delta t \mathbf v(t) \\
+					\mathbf v(t + \Delta t) &= \mathbf v(t) + \Delta t \mathbf a(t).
+				\end{align*}$$
+				
+			<h3>Symplectic Euler</h3>
+			
+				The symplectic Euler method is also known as semi-implicit Euler since first the new velocity is determined and then the new position is computed using the new velocity value:
+				$$\begin{align*}
+					\mathbf v(t + \Delta t) &= \mathbf v(t) + \Delta t \mathbf a(t) \\
+					\mathbf x(t + \Delta t) &= \mathbf x(t) + \Delta t \mathbf v(t + \Delta t).
+				\end{align*}$$
+				The method is also first-order accurate but yields better results than the explicit Euler since it is a symplectic method.
+				
+			<h3>Runge-Kutta 2</h3>
+			
+				Typically numerical integration methods are defined for a differential equation determined by a function $\mathbf f(t, \mathbf s(t))$, where $\mathbf s$ defines the state of the system at time $t$. In our example the state is defined by the current position and velocity of the particle and the function is defined as:
+				$$\begin{equation*}
+					\mathbf f(t, \mathbf s(t)) = \begin{pmatrix} \dot{\mathbf x} \\ \dot{\mathbf v} \end{pmatrix}, \quad\quad \mathbf s(t) = \begin{pmatrix} \mathbf x(t) \\ \mathbf v(t) \end{pmatrix}
+				\end{equation*}$$
+				
+				Using this function the second-order Runge-Kutta integration is defined as
+				$$\begin{align*}
+					\mathbf k_1 &= \Delta t \mathbf f(t, \mathbf s(t)) \\
+					\mathbf k_2 &= \Delta t \mathbf f(t + \frac12 \Delta t, \mathbf s(t) + \frac12 \mathbf k_1) \\
+					\mathbf s(t + \Delta t) &= \mathbf s(t) + \mathbf k_2.
+				\end{align*}$$
+				Note that the Runge-Kutta method has multiple stages (in our case 2) to achieve a higher-order accuracy. However, this approach is more expensive than the Euler methods since the function has to be evaluated once per stage. 
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Particle 
+	{
+		constructor (x, y) 
+		{
+			this.x = x;
+			this.y = y;
+			this.fx = 0.0;
+			this.fy = 0.0;
+			this.vx = 0.0;
+			this.vy = 0.0;
+		}
+	}
+	
+	class Simulation
+	{
+		constructor()
+		{
+			this.particles = [];
+			this.mass = 1.0;
+			this.gravity = -9.81;
+			this.timeStepSize = 0.05;
+			this.time = 0;
+			this.endTime = 3.0;
+			this.solution = [];
+			this.reference_solution = [];
+			this.timeIntegrationMethod = "Symplectic Euler";
+			this.pause = true;
+
+			this.init();
+		}
+		
+		init()
+		{					
+			this.computeReferenceSolution();
+			
+			// create particle 
+			this.particles = [];
+			this.particles.push(new Particle(0.0, 0.0));
+			let p = this.particles[0];
+			p.vx = 1;
+			p.vy = 4.5;
+			
+			this.time = 0.0;
+			this.solution = [];
+		}
+		
+		computeReferenceSolution()
+		{
+			// create particle 
+			this.particles = [];
+			this.particles.push(new Particle(0.0, 0.0));
+			let p = this.particles[0];
+			p.vx = 1;
+			p.vy = 4.5;
+			
+			this.time = 0.0;
+			this.reference_solution = [];
+			while (this.time < this.endTime)
+			{
+				let p = this.particles[0];
+				this.reference_solution.push([p.x, p.y]);
+				this.exactIntegration();
+				this.time = this.time + this.timeStepSize;
+			}
+		}
+		
+		exactIntegration()
+		{
+			let dt = this.timeStepSize;
+			
+			// exact time integration for constant force
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				let p = this.particles[i];
+				
+				// integrate position
+				p.x = p.x + dt * p.vx + 0.5 * dt*dt* p.fx / this.mass;
+				p.y = p.y + dt * p.vy + 0.5 * dt*dt* (p.fy / this.mass + this.gravity);
+				
+				// integrate velocity considering gravitational acceleration and forces 
+				p.vx = p.vx + dt * p.fx / this.mass;
+				p.vy = p.vy + dt * (p.fy / this.mass + this.gravity);
+			}
+		}
+		
+		explicitEuler()
+		{
+			let dt = this.timeStepSize;
+			// symplectic Euler step
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				let p = this.particles[i];
+				
+				// integrate position
+				p.x = p.x + dt * p.vx;
+				p.y = p.y + dt * p.vy;
+				
+				// integrate velocity considering gravitational acceleration and forces 
+				p.vx = p.vx + dt * p.fx / this.mass;
+				p.vy = p.vy + dt * (p.fy / this.mass + this.gravity);
+			}
+		}
+		
+		symplecticEuler()
+		{
+			let dt = this.timeStepSize;
+			// symplectic Euler step
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				let p = this.particles[i];
+				// integrate velocity considering gravitational acceleration and forces 
+				p.vx = p.vx + dt * p.fx / this.mass;
+				p.vy = p.vy + dt * (p.fy / this.mass + this.gravity);
+			
+				// integrate position
+				p.x = p.x + dt * p.vx;
+				p.y = p.y + dt * p.vy;
+			}
+		}
+		
+		rungeKutta2()
+		{
+			let dt = this.timeStepSize;
+			
+			// Runge-Kutta 2 step
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				let p = this.particles[i];
+				
+				let k1_x = dt * p.vx;
+				let k1_y = dt * p.vy;
+				let k1_vx = dt/this.mass * p.fx;
+				let k1_vy = dt*(p.fy / this.mass + this.gravity);
+				
+				let k2_x = dt * (p.vx + 0.5*k1_vx);
+				let k2_y = dt * (p.vy + 0.5*k1_vy);
+				let k2_vx = dt/this.mass * p.fx;
+				let k2_vy = dt*(p.fy / this.mass + this.gravity);
+				
+				p.x = p.x + k2_x;
+				p.y = p.y + k2_y;
+				p.vx = p.vx + k2_vx;
+				p.vy = p.vy + k2_vy;
+			}
+		}
+		
+		// simulation step
+		simulationStep()
+		{	
+			if (this.pause)
+				return;
+				
+			let dt = this.timeStepSize;
+			let p = this.particles[0];
+			
+			if (this.time < this.endTime)
+				this.solution.push([p.x, p.y]);
+			else 
+				this.pause = true;
+			
+			// time integration step
+			if (this.timeIntegrationMethod == "Explicit Euler")
+				this.explicitEuler();
+			else if (this.timeIntegrationMethod == "Symplectic Euler")
+				this.symplecticEuler();
+			else if (this.timeIntegrationMethod == "Runge-Kutta 2")
+				this.rungeKutta2();
+			
+			// update simulation time
+			this.time = this.time + dt;
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2};
+			this.zoom = 150;
+			this.particleRadius = 0.025;
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			if (this.sim == undefined)
+				this.sim = new Simulation();
+				
+			this.sim.gravity = parseFloat(document.getElementById('gravityInput').value);
+			this.sim.timeStepSize = parseFloat(document.getElementById('timeStepSizeInput').value);
+			this.sim.mass = parseFloat(document.getElementById('massInput').value);
+			this.sim.timeIntegrationMethod = document.getElementById('timeIntegrationInput').value;
+				
+			this.sim.init();
+			
+			this.mainLoop();
+		}
+		
+		drawCoordinateSystem()
+		{
+			// draw x-axis
+			this.c.strokeStyle = "#FF0000";
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x+1*this.zoom, this.origin.y);
+			this.c.stroke();	
+
+			// draw y-axis
+			this.c.strokeStyle = "#00FF00";	
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x, this.origin.y-1*this.zoom);
+			this.c.stroke();		
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			
+			this.drawCoordinateSystem();
+					
+			// draw particles as circles
+			let r = this.particleRadius;
+			for (let i = 0; i < this.sim.particles.length; i++) 
+			{
+				let p = this.sim.particles[i];
+				let r = this.particleRadius;
+				this.c.fillStyle = "#0000FF";	
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+			}
+			
+			this.c.strokeStyle = "#00BB00";	
+			this.c.fillStyle = "#00BB00";
+			for (let i = 0; i < this.sim.reference_solution.length; i++) 
+			{
+				let x = this.sim.reference_solution[i];
+				let px = this.origin.x + x[0] * this.zoom;
+				let py = this.origin.y - x[1] * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+				
+				if (i > 0)
+				{	
+					let x2 = this.sim.reference_solution[i-1];
+					this.c.beginPath();
+					this.c.moveTo(this.origin.x + x[0]*this.zoom, this.origin.y - x[1]*this.zoom);
+					this.c.lineTo(this.origin.x + x2[0]*this.zoom, this.origin.y - x2[1]*this.zoom);
+					this.c.stroke();
+				}
+			}
+
+			this.c.strokeStyle = "#0011AA";	
+			this.c.fillStyle = "#0011AA";			
+			for (let i = 0; i < this.sim.solution.length; i++) 
+			{
+				let x = this.sim.solution[i];
+				let px = this.origin.x + x[0] * this.zoom;
+				let py = this.origin.y - x[1] * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+				
+				if (i > 0)
+				{	
+					let x2 = this.sim.solution[i-1];
+					this.c.beginPath();
+					this.c.moveTo(this.origin.x + x[0]*this.zoom, this.origin.y - x[1]*this.zoom);
+					this.c.lineTo(this.origin.x + x2[0]*this.zoom, this.origin.y - x2[1]*this.zoom);
+					this.c.stroke();
+				}
+			}
+		}
+		
+		mainLoop()
+		{
+			this.sim.simulationStep();				
+			document.getElementById("time").innerHTML = this.sim.time.toFixed(2);	
+
+			this.draw();
+			if (!this.sim.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+		}
+		
+		doPause()
+		{
+			this.sim.pause = !this.sim.pause;
+			if (!this.sim.pause)
+				this.mainLoop();
+		}
+			
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+			this.draw();
+		}
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>

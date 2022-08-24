@@ -1,0 +1,545 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Position-Based Dynamics</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Position-Based Dynamics</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table>		
+				<col width="180" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Current time</label></td>
+					<td><span id="time">0.00</span> s</td>
+				</tr>
+				<tr>
+					<td><label>Time per sim. step</label></td>
+					<td><span id="timePerStep">0.00</span> ms</td>
+				</tr>
+				<tr>
+					<td><label># particles</label></td>
+					<td><span id="numParticles">0</span></td>
+				</tr>
+				<tr>
+					<td><label># constraints</label></td>
+					<td><span id="numConstraints">0</span></td>
+				</tr>
+				<tr>
+					<td><label for="widthInput">Width</label></td>
+					<td><input onchange="gui.restart()" id="widthInput" type="number" value="40" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="heightInput">Height</label></td>
+					<td><input onchange="gui.restart()" id="heightInput" type="number" value="30" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="fixedParticlesInput"># fixed particles</label></td>
+					<td><select onchange="gui.restart()" id="fixedParticlesInput">
+					  <option value="1">1</option>
+					  <option value="2" selected="selected">2</option>
+					  <option value="4">4</option>
+					</select></td>
+				</tr>
+				<tr>
+					<td><label for="timeStepSizeInput">Time step size</label></td>
+					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.01" step="0.001"></td>
+				</tr>
+				<tr>
+					<td><label for="iterationsInput">Iterations</label></td>
+					<td><input onchange="gui.sim.numIterations=parseInt(value)" id="iterationsInput" type="number" value="5" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="gravityInput">Gravity</label></td>
+					<td><input onchange="gui.sim.gravity=parseFloat(value)" id="gravityInput" type="number" value="-9.81" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="massInput">Mass</label></td>
+					<td><input onchange="gui.sim.mass=parseFloat(value)" id="massInput" type="number" value="0.5" step="0.01"></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>PBD algorithm:</h2>
+				This example shows the position based dynamics method introduced by Müller et al. [MHHR06,BMM17].
+				<ol>
+					<li>time integration to predict particle positions</li>
+					<li class="nostyle"><b>loop</b></li>
+					<li style="margin-left:40px">compute Lagrange multipliers</li>
+					<li style="margin-left:40px">determine position correction</li>
+					<li>update velocities</li>
+				</ol>
+				In this example we use distance constraints 
+				$$C_i(\mathbf{x}_{i_1}, \mathbf{x}_{i_2}) = \| \mathbf x_{i_1} -\mathbf x_{i_2} \|-d,$$
+				where $d$ is the rest length between particles $\mathbf{x}_{i_1}$ and  $\mathbf{x}_{i_2}$.
+			
+			<h3>1. Time integration</h3>
+				In the first step the particle positions are advected using a symplectic Euler method to obtain predicted positions $\mathbf x^*$:
+				$$\begin{align*}
+					\mathbf v^* &= \mathbf v(t) + \Delta t \mathbf a_\text{ext}(t) \\
+					\mathbf x^* &= \mathbf x(t) + \Delta t \mathbf v^*,
+				\end{align*}$$
+				where $\mathbf a_\text{ext}$ are accelerations due to external forces.
+				
+			<h3>2. Solver loop</h3>
+				Position corrections are computed and applied in a loop using a fixed number of iterations. 
+				
+			<h3>3. Compute Lagrange multipliers</h3>
+			
+				<p>The general form to compute the Lagrange multipliers in position-based dynamics is
+				$$\mathbf J \mathbf M^{-1} \mathbf J^T \boldsymbol \lambda = -\mathbf C(\mathbf p),$$
+				where $\mathbf J = (\partial C / \partial \mathbf x)^T$ is the Jacobian of the constraint function and $\mathbf M$ denotes the mass matrix.</p>
+				
+				<p>Since the distance constraint is a scalar function the Lagrange multiplier is determined as
+				$$\lambda_i = - \frac{C_i(\mathbf x)}{\sum_j \frac{1}{m_j} \| \partial C_i(\mathbf x) / \partial \mathbf x_j\|^2},$$
+				where $j$ denotes the indices of the particles which are influenced by the constraint.
+				</p>
+				
+				<p>To compute the Lagrange multipliers, the constraint gradients are required which are computed as: </p>				
+				<h4>Constraint gradients:</h4>
+					$$\begin{align*}
+					 \frac{\partial C_i}{\partial \mathbf x_{i_1}} &= \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|}  \\
+					 \frac{\partial C_i}{\partial \mathbf x_{i_2}} &= - \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|}
+					\end{align*}$$
+					
+			<h3>4. Position correction:</h3>
+				The position correction for a particle is determined using the Lagrange multiplier:
+					$$\begin{align*}
+					\Delta \mathbf x_{i_1} &= \frac{1}{m_{i_1}} \frac{\partial C_i}{\partial \mathbf x_{i_1}} \lambda_i = -\frac{\frac{1}{m_{i_1}}}{\frac{1}{m_{i_1}} + \frac{1}{m_{i_2}}}(\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|-d)\frac{\mathbf{x}_{i_1}- \mathbf{x}_{i_2}}{\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|} \\
+					\Delta \mathbf x_{i_2} &= \frac{1}{m_{i_2}} \frac{\partial C_i}{\partial \mathbf x_{i_2}} \lambda_i = +\frac{\frac{1}{m_{i_1}}}{\frac{1}{m_{i_1}} + \frac{1}{m_{i_2}}}(\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|-d)\frac{\mathbf{x}_{i_1}- \mathbf{x}_{i_2}}{\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|} 
+					\end{align*}$$
+				and the correction is applied to update $\mathbf x^*$ as
+					$$\mathbf x^* := \mathbf x^* + \Delta \mathbf x.$$
+					
+			<h3>5. Velocity update:</h3>
+				The final positions and velocities are computed as:
+				$$\begin{align*}
+					\mathbf x_i(t+\Delta t) &= \mathbf x_i^* \\
+					\mathbf v_i(t+\Delta t) &= \frac{1}{\Delta t} (\mathbf x_i(t+\Delta t) - \mathbf x_i(t))
+				\end{align*}
+				$$	
+			
+			<h3>References</h3>
+			<ul>
+			<li>[MHHR06] Matthias Müller, Bruno Heidelberger, Marcus Hennix, John Ratcliff. Position Based Dynamics. In Proceedings of Virtual Realitiy, Interactions, and Physical Simulation, 2006. Eurographics Association.</li>
+			<li>[BMM17] Jan Bender, Matthias Müller, Miles Macklin. A Survey on Position Based Dynamics, 2017. Eurographics Tutorials, 2017</li>
+			</ul>
+			
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Particle 
+	{
+		constructor (x, y) 
+		{
+			this.x = x
+			this.y = y
+			this.xOld = x
+			this.yOld = y
+			this.vx = 0
+			this.vy = 0
+		}
+	}
+	
+	class Constraint 
+	{
+		constructor (index1, index2, restLength) 
+		{
+			this.index1 = index1
+			this.index2 = index2
+			this.length = restLength
+		}
+	}
+	
+	class Simulation
+	{
+		constructor(width, height, fixed)
+		{
+			this.constraints = [];
+			this.particles = [];
+			this.width = width;
+			this.height = height;
+			this.numIterations = 2;
+			this.mass = 0.5;
+			this.gravity = -9.81;
+			this.timeStepSize = 0.05;
+			this.time = 0;
+			this.numFixedParticles = fixed;
+
+			this.init();
+		}
+		
+		init()
+		{			
+			// create particles  
+			let i;
+			let j;
+			let w = this.width;
+			let h = this.height;
+			let s = 0.1;
+			for (i = 0; i < h; i++) 
+				for (j = 0; j < w; j++) 
+					this.particles.push(new Particle(s*2*j, -s*2*i))
+			
+			// create horizontal constraints
+			for (i = 0; i < h; i++)
+				for (j = 0; j < w - 1; j++)
+					this.constraints.push(new Constraint(i*w + j, i*w + j + 1, s*2.0));
+			
+			// create vertical constraints
+			for (i = 0; i < h-1; i++)
+				for (j = 0; j < w; j++)
+					this.constraints.push(new Constraint(i*w + j, i*w + j + w, s*2.0));
+			
+			// create diagonal constraints
+			for (i = 0; i < h-1; i++)
+			{
+				for (j = 0; j < w-1; j++)
+				{
+					this.constraints.push(new Constraint(i*w + j, i*w + j + w + 1, s*Math.sqrt(8)));			
+					this.constraints.push(new Constraint(i*w + j +1, i*w + j + w, s*Math.sqrt(8)));
+				}
+			}
+		}
+		
+		isActive(i)
+		{
+			// particle 0 and the selected particle are fixed
+			if (this.numFixedParticles == 1)
+				return (i != 0) && (i != gui.selectedParticle);
+			else if (this.numFixedParticles == 2)
+				return (i != 0) && (i != this.width-1) && (i != gui.selectedParticle);
+			else 
+				return (i != 0) && (i != this.width-1) && (i != (this.height-1)*this.width) && (i != this.height*this.width-1) && (i != gui.selectedParticle);
+		}
+		
+		// simulation step
+		simulationStep()
+		{	
+			let dt = this.timeStepSize;
+		
+			// compute preview using symplectic Euler
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				if (this.isActive(i))
+				{
+					let p = this.particles[i];
+					
+					// store old position for velocity update after the position correction
+					p.xOld = p.x;	
+					p.yOld = p.y;
+				
+					// integrate velocity considering gravitational acceleration 
+					p.vy = p.vy + dt * this.gravity
+				
+					// integrate position
+					p.x = p.x + dt * p.vx;
+					p.y = p.y + dt * p.vy;
+				}
+			}
+					
+			// constraint handling
+			for (let iter = 0; iter < this.numIterations; iter++) 
+			{
+				for (let i = 0; i < this.constraints.length; i++) 
+				{
+					let index1 = this.constraints[i].index1;
+					let index2 = this.constraints[i].index2;
+					let p1 = this.particles[index1];
+					let p2 = this.particles[index2];
+				
+					// compute length of constraint
+					let dx = p1.x - p2.x;
+					let dy = p1.y - p2.y;
+					let dl = Math.sqrt(dx*dx + dy*dy)
+					
+					// compute displacement: C = ||x1-x2|| - restLength
+					let C = dl - this.constraints[i].length;
+					
+					// determine gradient
+					let gradC_x = 0.0;
+					let gradC_y = 0.0;
+					if (dl > 0.001)
+					{
+						gradC_x = dx/dl; 
+						gradC_y = dy/dl; 
+						let K = (gradC_x*gradC_x + gradC_y*gradC_y) / this.mass;
+						if (i != 0)
+							K = 2*K;
+						
+						// comute Lagrange multiplier
+						let lambda = -C / K;	
+						
+						// determine position correction
+						if (this.isActive(index1))
+						{
+							p1.x = p1.x + 1.0/this.mass*lambda * gradC_x;
+							p1.y = p1.y + 1.0/this.mass*lambda * gradC_y;
+						}
+						if (this.isActive(index2))
+						{
+							p2.x = p2.x - 1.0/this.mass*lambda * gradC_x;
+							p2.y = p2.y - 1.0/this.mass*lambda * gradC_y;
+						}
+					}
+				}
+			}
+				
+			// update velocities
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				if (this.isActive(i))
+				{
+					let p = this.particles[i];
+					p.vx = 1.0/dt * (p.x - p.xOld);
+					p.vy = 1.0/dt * (p.y - p.yOld);
+				}
+			}
+			
+			// update simulation time
+			this.time = this.time + dt;
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2-200};
+			this.zoom = 50;
+			this.particleRadius = 0.025;
+			this.selectedParticle = -1;
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			let w = parseInt(document.getElementById('widthInput').value);
+			let h = parseInt(document.getElementById('heightInput').value);
+			let f = parseInt(document.getElementById('fixedParticlesInput').value);
+			delete this.sim;
+			this.sim = new Simulation(w, h, f);
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+
+			this.sim.numIterations = parseInt(document.getElementById('iterationsInput').value);
+			this.sim.gravity = parseFloat(document.getElementById('gravityInput').value);
+			this.sim.timeStepSize = parseFloat(document.getElementById('timeStepSizeInput').value);
+			this.sim.mass = parseFloat(document.getElementById('massInput').value);
+			
+			document.getElementById("numParticles").innerHTML = this.sim.particles.length;
+			document.getElementById("numConstraints").innerHTML = this.sim.constraints.length;
+			this.mainLoop();
+		}
+		
+		drawCoordinateSystem()
+		{
+			// draw x-axis
+			this.c.strokeStyle = "#FF0000";
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x+1*this.zoom, this.origin.y);
+			this.c.stroke();	
+
+			// draw y-axis
+			this.c.strokeStyle = "#00FF00";	
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x, this.origin.y-1*this.zoom);
+			this.c.stroke();		
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			
+			this.drawCoordinateSystem();
+			
+			// draw constraints as lines
+			this.c.strokeStyle = "#666666";
+			for (let i = 0; i < this.sim.constraints.length; i++) 
+			{
+				let index1 = this.sim.constraints[i].index1;
+				let index2 = this.sim.constraints[i].index2;
+				let p1 = this.sim.particles[index1];
+				let p2 = this.sim.particles[index2];
+								
+				this.c.beginPath();
+				this.c.moveTo(this.origin.x + p1.x*this.zoom, this.origin.y - p1.y*this.zoom);
+				this.c.lineTo(this.origin.x + p2.x*this.zoom, this.origin.y - p2.y*this.zoom);
+				this.c.stroke();	
+			}
+			
+			// draw particles as circles
+			for (let i = 0; i < this.sim.particles.length; i++) 
+			{
+				let p = this.sim.particles[i];
+				let r = this.particleRadius;
+				if (i == this.selectedParticle)
+				{
+					// draw selected particle in red with larger radius
+					this.c.fillStyle = "#FF0000";	
+					r = 3*r;
+				}
+				else 
+					this.c.fillStyle = "#0000FF";	
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+			}
+		}
+		
+		mainLoop()
+		{
+			// perform multiple sim steps per render step
+			for (let i=0; i < 8; i++)
+			{
+				let t0 = performance.now();
+				
+				this.sim.simulationStep();
+
+				let t1 = performance.now();
+				this.timeSum += t1 - t0;
+				this.counter += 1;
+					
+				if (this.counter % 50 == 0)				
+				{
+					this.timeSum /= this.counter;
+					document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(2);		
+					this.timeSum = 0.0;
+					this.counter = 0;
+				}	
+				document.getElementById("time").innerHTML = this.sim.time.toFixed(2);	
+			}			
+
+			this.draw();
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+		}
+		
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+		
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);
+				for (let i = 0; i < this.sim.particles.length; i++) 
+				{
+					let p = this.sim.particles[i];
+					let px = this.origin.x + p.x * this.zoom;
+					let py = this.origin.y - p.y * this.zoom;
+					let dx = px - mousePos.x
+					let dy = py - mousePos.y
+					let dist2 = Math.sqrt(dx * dx + dy * dy)
+					if (dist2 < 10)
+					{
+						this.selectedParticle = i;
+						break;
+					}				
+				}			
+			}
+		}
+		
+		getMousePos(canvas, event) 
+		{
+			let rect = canvas.getBoundingClientRect();
+			return {
+				x: event.clientX - rect.left,
+				y: event.clientY - rect.top
+			};
+		}
+	
+		mouseMove(event)
+		{
+			if (this.selectedParticle != -1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);		
+				this.sim.particles[this.selectedParticle].x = (mousePos.x - this.origin.x) / this.zoom;
+				this.sim.particles[this.selectedParticle].y = -(mousePos.y - this.origin.y) / this.zoom;
+			}
+		}
+		
+		mouseUp(event) 
+		{
+			this.selectedParticle = -1;
+		}
+		
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+		}
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>

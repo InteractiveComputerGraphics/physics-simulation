@@ -1,0 +1,551 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
+	<title>Mass-Spring Model</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Mass-Spring Model</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="700"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="700" height="600" style="border:2px solid #000000;border-radius: 20px;background-color:#FFFFFF">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<div id="plotOutput" style="width: 600px; height: 600px;border:2px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+			</td>
+		</tr>
+		<tr>
+			<td>
+				<table>		
+				<col width="200" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Current time</label></td>
+					<td><span id="time">0.00</span> s</td>
+				</tr>
+				<tr>
+					<td><label>Time per sim. step</label></td>
+					<td><span id="timePerStep">0.00</span> ms</td>
+				</tr>
+				<tr>
+					<td><label for="timeStepSizeInput">Time step size</label></td>
+					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.005" step="0.001"></td>
+				</tr>
+				<tr>
+					<td><label for="initialLengthInput">Initial length</label></td>
+					<td><input onchange="gui.restart()" id="initialLengthInput" type="number" value="2.0" step="0.1"></td>
+				</tr>
+				<tr>
+					<td><label for="stiffnessInput">Stiffness</label></td>
+					<td><input onchange="gui.restart()" id="stiffnessInput" type="number" value="5.0" step="1.0"></td>
+				</tr>
+				<tr>
+					<td><label for="massInput">Mass</label></td>
+					<td><input onchange="gui.restart()" id="massInput" type="number" value="0.5" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="timeIntegrationInput">Time integration method</label></td>
+					<td><select onchange="gui.sim.timeIntegrationMethod=value" id="timeIntegrationInput"> 
+						<option>Explicit Euler</option> 
+						<option selected="selected">Symplectic Euler</option> 
+						<option>Runge-Kutta 2</option> 
+						<option>Implicit Euler</option>
+					</select> 
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>Mass spring algorithm:</h2>
+				This 1D example shows the motion of a mass spring system that consists of a static and a dynamic particle linked by a spring. In each simulation step the following steps are performed:
+				<ol>
+					<li>compute spring forces</li>
+					<li>time integration to get new particle positions and velocities</li>
+				</ol>
+				On the left the simulation is shown while on the right we see the plot of the motion in x-direction compared to the analytic solution.
+				
+			<h3>1. Compute spring forces</h3>
+			
+				<p>In this simple 1D example we have a spring with a stiffness $k$ and a rest length of 0. Therefore, the spring force is detertmined as
+				$$f(x) = -k x.$$
+				</p>
+			
+			<h3>2. Time integration</h3>
+				<h4>Analytic solution</h4>
+				
+				The analytic solution for the position $x$ of a particle which is linked by a spring to the origin is
+				$$
+					x(t) = x(0) \cos\left(\sqrt{\frac{k}{m}} t \right ),
+				$$
+				where $m$ is the mass of the particle and $x(0)$ the initial position.
+				
+				<h4>Explicit Euler</h4>
+				
+				The explicit Euler method is a first-order accurate method for solving ordinary differential equations (ODEs):
+				$$\begin{align*}
+					x(t + \Delta t) &= x(t) + \Delta t v(t) \\
+					v(t + \Delta t) &= v(t) + \Delta t \frac{f(t)}{m}.
+				\end{align*}$$
+				
+				<h4>Symplectic Euler</h4>
+				
+				The symplectic Euler method is also known as semi-implicit Euler since first the new velocity is determined and then the new position is computed using the new velocity value:
+				$$\begin{align*}
+					v(t + \Delta t) &= v(t) + \Delta t \frac{f(t)}{m} \\
+					x(t + \Delta t) &= x(t) + \Delta t v(t + \Delta t).
+				\end{align*}$$
+				The method is also first-order accurate but yields better results than the explicit Euler since it is a symplectic method.
+				
+				<h4>Runge-Kutta 2</h4>
+				
+				Typically numerical integration methods are defined for a differential equation determined by a function $f(t, s(t))$, where $s$ defines the state of the system at time $t$. In our 1D example the state is defined by the current position and velocity of the particle and the function is defined as:
+				$$\begin{equation*}
+					f(t, s(t)) = \begin{pmatrix} \dot{x} \\ \dot{v} \end{pmatrix}, \quad\quad s(t) = \begin{pmatrix} x(t) \\ v(t) \end{pmatrix}
+				\end{equation*}$$
+				
+				Using this function the second-order Runge-Kutta integration is defined as
+				$$\begin{align*}
+					k_1 &= \Delta t f(t, s(t)) \\
+					k_2 &= \Delta t f(t + \frac12 \Delta t, s(t) + \frac12 k_1) \\
+					s(t + \Delta t) &= s(t) + k_2.
+				\end{align*}$$
+				Note that the Runge-Kutta method has multiple stages (in our case 2) to achieve a higher-order accuracy. However, this approach is more expensive than the Euler methods since the function has to be evaluated once per stage. 
+				
+				<h4>Implicit Euler</h4>
+				
+				The implicit Euler method is a first-order accurate method for solving ordinary differential equations (ODEs):
+				$$\begin{align*}
+					x(t + \Delta t) &= x(t) + \Delta t v(t + \Delta t) \\
+					v(t + \Delta t) &= v(t) + \Delta t \frac{f(x(t + \Delta t))}{m}.
+				\end{align*}$$
+				The method is unconditionally stable but in general a non-linear system has to be solved. 
+				
+				In our simple 1D example we linearize the spring force $f(x)$ using a first-order Taylor approximation:
+				$$
+				f(x(t + \Delta t)) = f(x + \Delta x) = f(x) + \frac{\partial f(x)}{\partial x} \Delta x,
+				$$
+				where $\frac{\partial f(x)}{\partial x} = -k$ and we write $x=x(t)$ and $x + \Delta x = x(t + \Delta t)$ for simplicity. Using this linearization and transforming the above equations yields the linear equation
+				$$
+				 \left (1 + \frac{\Delta t^2}{m}k \right ) \Delta v = \frac{\Delta t}{m} (f(x) - \Delta t k v),
+				$$
+				which can be simply solved for the velocity change $\Delta v$. Finally, the position and velocity are updated as
+				$$\begin{align*}
+					v(t+\Delta t) &= v(t) + \Delta v \\
+					x(t+\Delta t) &= x(t) + \Delta t v(t+\Delta t).
+				\end{align*}
+				$$
+			
+			
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+
+	class Simulation
+	{
+		constructor()
+		{
+			this.initialLength = 2.0;
+			this.stiffness = 5.0;
+			this.mass = 0.5;
+			this.timeStepSize = 0.05;
+			this.timeIntegrationMethod = "Symplectic Euler";
+
+			this.restart();
+		}
+		
+		restart()
+		{
+			this.x = this.initialLength;
+			this.v = 0.0;
+			this.time = 0;
+			this.plotValues = {};
+		}
+		
+		computeSpringForce(x)
+		{		
+			// compute spring force
+			return -this.stiffness * x;
+		}
+		
+		explicitEuler()
+		{
+			// compute spring force
+			let force = this.computeSpringForce(this.x);
+			
+			// explicit Euler step
+			this.x += this.timeStepSize * this.v;
+			this.v += this.timeStepSize/this.mass * force;
+		}
+		
+		symplecticEuler()
+		{
+			// compute spring force
+			let force = this.computeSpringForce(this.x);
+			
+			// symplectic Euler step
+			this.v += this.timeStepSize/this.mass * force;
+			this.x += this.timeStepSize * this.v;
+		}
+		
+		rungeKutta2()
+		{
+			// compute spring force
+			let force1 = this.computeSpringForce(this.x);
+			
+			// Runge-Kutta 2 step
+			let k1_x = this.timeStepSize * this.v;		
+			let k1_v = this.timeStepSize/this.mass * force1;
+			
+			// compute spring force
+			let force2 = this.computeSpringForce(this.x + 0.5*k1_x);
+			
+			let k2_x = this.timeStepSize * (this.v + 0.5*k1_v);
+			let k2_v = this.timeStepSize/this.mass * force2;
+			
+			this.x += k2_x;			
+			this.v += k2_v;
+		}
+		
+		implicitEuler()
+		{
+			// compute spring force
+			let f0 = this.computeSpringForce(this.x);
+								
+			// compute df/dx
+			let df_dx = -this.stiffness;
+			
+			// determine left hand side:
+			// A =  1 - h^2/m df/dx 
+			// Note that we set df/dv to zero. This means that there is no damping.
+			let h = this.timeStepSize;
+			let h2 = h*h;	
+			let A = 1.0 - h2*df_dx/this.mass;
+			
+			// determine right hand side of linear equation
+			// b = h Minv (f_0 + h df/dx v_0)
+			let b = h/this.mass*(f0 + h * df_dx * this.v);
+			
+			// solve equation by inverting A
+			let deltaV = b/A;
+				
+			// implicit Euler step
+			this.v += deltaV;			
+			this.x += h * this.v;
+		}
+		
+		
+		plotValue(name, val)
+		{
+			if (this.plotValues[name] == undefined)
+				this.plotValues[name] = [val];
+			else
+				this.plotValues[name].push(val);
+		}
+		
+		// simulation step
+		simulationStep()
+		{	
+			let dt = this.timeStepSize;
+			
+			// time integration step
+			if (this.timeIntegrationMethod == "Explicit Euler")
+				this.explicitEuler();
+			else if (this.timeIntegrationMethod == "Symplectic Euler")
+				this.symplecticEuler();
+			else if (this.timeIntegrationMethod == "Runge-Kutta 2")
+				this.rungeKutta2();
+			else if (this.timeIntegrationMethod == "Implicit Euler")
+				this.implicitEuler();
+				
+			// update simulation time
+			this.time = this.time + dt;
+			
+			// plot position
+			this.plotValue('Numerical solution', this.x);
+			let sol = this.initialLength * Math.cos(Math.sqrt(this.stiffness/this.mass) * this.time);
+			this.plotValue('Analytic solution', sol);			
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2};
+			this.zoom = 80;
+			this.particleRadius = 0.025;
+			this.selectedParticle = -1;
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			
+			if (this.sim == undefined)
+				this.sim = new Simulation();
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+
+			this.sim.stiffness = parseFloat(document.getElementById('stiffnessInput').value);
+			this.sim.timeStepSize = parseFloat(document.getElementById('timeStepSizeInput').value);
+			this.sim.mass = parseFloat(document.getElementById('massInput').value);
+			this.sim.initialLength = parseFloat(document.getElementById('initialLengthInput').value);
+			this.sim.timeIntegrationMethod = document.getElementById('timeIntegrationInput').value;
+			this.sim.restart();
+			
+			this.mainLoop();
+		}
+		
+		drawCoordinateSystem()
+		{
+			// draw x-axis
+			this.c.strokeStyle = "#FF0000";
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x+1*this.zoom, this.origin.y);
+			this.c.stroke();	
+
+			// draw y-axis
+			this.c.strokeStyle = "#00FF00";	
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x, this.origin.y-1*this.zoom);
+			this.c.stroke();		
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			
+			this.drawCoordinateSystem();
+			
+			// draw springs as lines
+			this.c.strokeStyle = "#666666";
+			let num_steps = 50;
+			let dx = this.sim.x / num_steps;
+			let x = 0.0;
+			let y = 0.0;
+			for (let i = 0; i < num_steps; i++) 
+			{													
+				this.c.beginPath();
+				this.c.moveTo(this.origin.x + x*this.zoom, this.origin.y - y*this.zoom);
+				
+				if (i == 0)
+					y = -0.25;
+				else if (i == num_steps-1)
+					y = 0.0;
+				else if (i % 2 == 0)
+					y -= 0.5;
+				else 
+					y += 0.5;
+				
+				this.c.lineTo(this.origin.x + (x+dx)*this.zoom, this.origin.y - y*this.zoom);
+				this.c.stroke();	
+				x+=dx;
+			}
+			
+			// draw line at initial length
+			this.c.strokeStyle = "#00AA11";
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x + this.sim.initialLength*this.zoom, this.origin.y+0.5*this.zoom);
+			this.c.lineTo(this.origin.x + this.sim.initialLength*this.zoom, this.origin.y-0.5*this.zoom);
+			this.c.stroke();	
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x - this.sim.initialLength*this.zoom, this.origin.y+0.5*this.zoom);
+			this.c.lineTo(this.origin.x - this.sim.initialLength*this.zoom, this.origin.y-0.5*this.zoom);
+			this.c.stroke();	
+			
+			// draw particles as circles
+			this.c.fillStyle = "#BB0000";				
+			this.c.beginPath();			
+			this.c.arc(this.origin.x, this.origin.y, 0.1 * this.zoom, 0, Math.PI*2, true); 
+			this.c.closePath();
+			this.c.fill();
+			
+			this.c.fillStyle = "#0000FF";	
+			let px = this.origin.x + this.sim.x * this.zoom;
+			let py = this.origin.y;
+				
+			this.c.beginPath();			
+			this.c.arc(px, py, 0.1 * this.zoom, 0, Math.PI*2, true); 
+			this.c.closePath();
+			this.c.fill();
+		}
+		
+		mainLoop()
+		{
+			// perform multiple sim steps per render step
+			for (let i=0; i < 8; i++)
+			{
+				let t0 = performance.now();
+				
+				this.sim.simulationStep();
+
+				let t1 = performance.now();
+				this.timeSum += t1 - t0;
+				this.counter += 1;
+					
+				if (this.counter % 50 == 0)				
+				{
+					this.timeSum /= this.counter;
+					document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(2);		
+					this.timeSum = 0.0;
+					this.counter = 0;
+				}	
+				document.getElementById("time").innerHTML = this.sim.time.toFixed(2);	
+			}			
+
+			this.draw();
+			this.updatePlot();
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+		}
+		
+		updatePlot() 
+		{
+			let data = [];
+			for(let key in this.sim.plotValues)
+			{
+				let value = this.sim.plotValues[key];
+				
+				while(this.sim.plotValues[key].length > 1000)
+					this.sim.plotValues[key].shift();
+				
+				let trace = {
+					y: value,
+					type: 'scatter',
+					name: key
+				};
+				data.push(trace);		
+			}
+			
+			let layout = {
+				title: 'Position',
+				yaxis: {
+					autorange: true,
+					range: [0, 3000],
+					type: 'linear'
+				}
+			}
+			
+			Plotly.newPlot('plotOutput', data, layout);
+		}
+
+		
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+		
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);
+				for (let i = 0; i < this.sim.particles.length; i++) 
+				{
+					let p = this.sim.particles[i];
+					let px = this.origin.x + p.x * this.zoom;
+					let py = this.origin.y - p.y * this.zoom;
+					let dx = px - mousePos.x
+					let dy = py - mousePos.y
+					let dist2 = Math.sqrt(dx * dx + dy * dy)
+					if (dist2 < 10)
+					{
+						this.selectedParticle = i;
+						break;
+					}				
+				}			
+			}
+		}
+		
+		getMousePos(canvas, event) 
+		{
+			let rect = canvas.getBoundingClientRect();
+			return {
+				x: event.clientX - rect.left,
+				y: event.clientY - rect.top
+			};
+		}
+	
+		mouseMove(event)
+		{
+			if (this.selectedParticle != -1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);		
+				this.sim.particles[this.selectedParticle].x = (mousePos.x - this.origin.x) / this.zoom;
+				this.sim.particles[this.selectedParticle].y = -(mousePos.y - this.origin.y) / this.zoom;
+			}
+		}
+		
+		mouseUp(event) 
+		{
+			this.selectedParticle = -1;
+		}
+		
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+		}
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>
