@@ -26,10 +26,10 @@ I hope the examples and their documentation help you to learn something about th
 
 ### Continuum Mechanics
 
+* [Computation of deformation gradient and strain tensor](examples/deformation_gradient_strain.html)
 * [Finite Element Method (FEM) - Corotated Linear Elasticity Model](examples/FEM_Corot.html)
 * [Finite Element Method (FEM) - St. Venant-Kirchhoff Model](examples/FEM_StVK.html)
 * [Finite Element Method (FEM) - Neohookean Elasticity Model](examples/FEM_Neohookean.html)
-* [Computation of deformation gradient and strain tensor](examples/deformation_gradient_strain.html)
 
 ### Position-Based Dynamics
 
