@@ -11,6 +11,7 @@ I hope the examples and their documentation help you to learn something about th
 # Particles
 
 * [A simple particle system](examples/particle_system.html)
+* [A simple particle system where each particle is represented by a rigid body with a rotation and an angular velocity](examples/particle_system_rb.html)
 
 # Time Integration
 
