@@ -140,7 +140,7 @@
 			this.timeStepSize = 0.05;
 			this.time = 0;
 			this.maxLifeTime = 3;
-			this.bodyEmission = 5;
+			this.rbEmission = 5;
 			this.emitter_x = 0.0;
 			this.emitter_y = 0.0;
 		}
@@ -148,7 +148,7 @@
 		emitRigidBodies()
 		{
 			// emit new rigid bodies
-			for (let i = 0; i < this.bodyEmission; i++) 
+			for (let i = 0; i < this.rbEmission; i++) 
 			{
 				// use random variation of velocity
 				let vx = -5 + Math.random()*10.0;
@@ -287,8 +287,9 @@
 				
 				this.c.save();
 				this.c.beginPath();			
-				this.c.translate(px-s2, py-s2);
+				this.c.translate(px, py);
 				this.c.rotate(rb.rotation);
+				this.c.translate(-s2, -s2);
 				this.c.rect(0, 0, s, s); 
 				this.c.closePath();
 				this.c.fill();
