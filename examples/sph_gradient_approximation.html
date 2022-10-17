@@ -69,7 +69,7 @@
 
 		<tr><td colspan="2">
 			<h2>SPH approximation of the gradient of a quadratic function:</h2>
-			In this example we approximate the gradient of a quadratic polynomial using the SPH discretization with the cubic spline kernel [KBST19]. The left plot shows the particle sampling pattern while the right plot shows the quadratic function, the exact gradient, the SPH gradient approximation, and the error. To compute the SPH approximation the function values are sampled along the red line in the left plot. That means that for each point on the line the neighbors are determined and the SPH difference formula to approximate the gradient is applied [KBST19]:
+			In this example we approximate the gradient of a quadratic polynomial using the SPH discretization with the cubic spline kernel [KBST19, KBST22]. The left plot shows the particle sampling pattern while the right plot shows the quadratic function, the exact gradient, the SPH gradient approximation, and the error. To compute the SPH approximation the function values are sampled along the red line in the left plot. That means that for each point on the line the neighbors are determined and the SPH difference formula to approximate the gradient is applied [KBST19]:
 			$$\langle \nabla f(x,y) \rangle = \sum_j \frac{m_j}{\rho_j} (f(x_j,y_j) - f(x,y)) \nabla W_{ij}$$
 			
 			Quadratic_function:
@@ -90,6 +90,8 @@
 			<h3>References</h3>
 			<ul>
 			<li>[KBST19] Dan Koschier, Jan Bender, Barbara Solenthaler, Matthias Teschner.  Smoothed Particle Hydrodynamics for Physically-Based Simulation of Fluids and Solids. Eurographics Tutorial, 2019</li>
+			<li>[KBST22] Dan Koschier, Jan Bender, Barbara Solenthaler, Matthias Teschner. A Survey on SPH Methods in Computer Graphics. Computer Graphics Forum, 2022
+			</li>
 			</ul>
 		</td></tr>
 	</table>	

@@ -61,7 +61,7 @@
 
 		<tr><td colspan="2">
 			<h2>SPH Approximation of different functions:</h2>
-			In this example we discretized a linear and a quadratic polynomial as well as a trigonometric function using SPH with the cubic spline kernel [KBST19]. The left plot shows the particle sampling pattern while the right plot shows the exact functions and their SPH approximations. To compute the SPH approximations the function values are sampled along the red line in the left plot. That means that for each point on the line the neighbors are determined and the SPH approximation formula is applied:
+			In this example we discretized a linear and a quadratic polynomial as well as a trigonometric function using SPH with the cubic spline kernel [KBST19, KBST22]. The left plot shows the particle sampling pattern while the right plot shows the exact functions and their SPH approximations. To compute the SPH approximations the function values are sampled along the red line in the left plot. That means that for each point on the line the neighbors are determined and the SPH approximation formula is applied:
 			$$\langle f(x,y) \rangle = \sum_j \frac{m_j}{\rho_j} f(x_j,y_j) W_{ij}$$
 			
 			Linear function: 
@@ -80,7 +80,9 @@
 			
 			<h3>References</h3>
 			<ul>
-			<li>[KBST19] Dan Koschier, Jan Bender, Barbara Solenthaler, Matthias Teschner.  Smoothed Particle Hydrodynamics for Physically-Based Simulation of Fluids and Solids. Eurographics Tutorial, 2019</li>
+			<li>[KBST19] Dan Koschier, Jan Bender, Barbara Solenthaler, Matthias Teschner. Smoothed Particle Hydrodynamics for Physically-Based Simulation of Fluids and Solids. Eurographics Tutorial, 2019
+			<li>[KBST22] Dan Koschier, Jan Bender, Barbara Solenthaler, Matthias Teschner. A Survey on SPH Methods in Computer Graphics. Computer Graphics Forum, 2022
+			</li>
 			</ul>
 		</td></tr>
 	</table>	
