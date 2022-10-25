@@ -32,10 +32,15 @@ I hope the examples and their documentation help you to learn something about th
 * [Finite Element Method (FEM) - St. Venant-Kirchhoff Model](examples/FEM_StVK.html)
 * [Finite Element Method (FEM) - Neohookean Elasticity Model](examples/FEM_Neohookean.html)
 
+### Impulse-Based Dynamic Simulation
+
+* [Impulse-Based Dynamic Simulation (IBDS)](examples/ibds.html)
+
 ### Position-Based Dynamics
 
 * [Position-Based Dynamics (PBD)](examples/pbd.html)
 * [eXtended Position-Based Dynamics (XPBD)](examples/xpbd.html)
+* [Shape Matching](examples/shape_matching.html)
 
 # Fluids
 

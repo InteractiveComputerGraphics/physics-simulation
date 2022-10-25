@@ -1,0 +1,665 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Shape Matching</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Shape Matching</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table>		
+				<col width="180" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Current time</label></td>
+					<td><span id="time">0.00</span> s</td>
+				</tr>
+				<tr>
+					<td><label>Time per sim. step</label></td>
+					<td><span id="timePerStep">0.00</span> ms</td>
+				</tr>
+				<tr>
+					<td><label for="timeStepSizeInput">Time step size</label></td>
+					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.01" step="0.001"></td>
+				</tr>
+				<tr>
+					<td><label for="stiffnessInput">Stiffness</label></td>
+					<td><input onchange="gui.sim.stiffness=parseFloat(value)" id="stiffnessInput" type="number" value="0.02" step="0.1"></td>
+				</tr>
+				<tr>
+					<td><label for="simulateMotion">Simulate motion</label></td>
+					<td><input onchange="gui.simulateMotion=this.checked" id="simulateMotion" type="checkbox" checked ></td>
+				</tr>
+				<tr>
+					<td><label for="renderGoalPos">Render goal positions</label></td>
+					<td><input onchange="gui.renderGoalPos=this.checked" id="renderGoalPos" type="checkbox"></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>Shape Matching algorithm:</h2>
+				This example shows the shape matching simulation method for deformable solids introduced by Müller et al. [MHTG05, BMM17].
+				<ol>
+					<li>time integration to predict particle positions</li>
+					<li>compute center of mass of current particle configuration</li>
+					<li>compute moment matrix</li>
+					<li>extract rotation</li>
+					<li>determine goal positions</li>
+					<li>update positions and velocities</li>
+				</ol>
+
+				Note that shape matching is a meshless method which is geometrically motivated. So it can only generate visually plausible results. The general idea is to match the initial configuration of the particles to the current deformed configuration to get goal positions. Then the particles are pulled towards these goal positions to simulate elasticity.
+
+			<h3>1. Time integration</h3>
+				In the first step the particle positions are advected using a symplectic Euler method to obtain predicted positions $\mathbf x^*$:
+				$$\begin{align*}
+					\mathbf v^* &= \mathbf v(t) + \Delta t \mathbf a_\text{ext}(t) \\
+					\mathbf x^* &= \mathbf x(t) + \Delta t \mathbf v^*,
+				\end{align*}$$
+				where $\mathbf a_\text{ext}$ are accelerations due to external forces.
+				
+			<h3>2. Compute center of mass</h3>
+			
+				<p>In order to determine the goal positions for all particles we search for a rotation matrix $\mathbf R$ and translation vectors $\mathbf t, \mathbf t_0$ which minimize the following equation: 
+				$$\begin{equation*}
+				\sum_i m_i (\mathbf R(\mathbf X_i - \mathbf t_0) + \mathbf t - \mathbf x^*_i)^2,
+			   \end{equation*}
+				$$
+				where $m$ is the mass, $\mathbf X$ defines the initial configuration and $\mathbf x^*$ the predicted deformed configuration.
+				</p>
+				<p>
+				The optimal translation vectors are the centers of mass of the initial configuration and the deformed configuration:
+				$$
+				\begin{eqnarray*}
+				  \mathbf t_0 &=& \frac{\sum_i m_i \mathbf X_i}{\sum_i m_i} \\
+				  \mathbf t &=& \frac{\sum_i m_i \mathbf x^*_i}{\sum_i m_i} 
+			    \end{eqnarray*}
+			    $$	
+				</p>
+
+				
+			<h3>3. Compute moment matrix</h3>
+			
+				<p>To compute the optimal rotation we move the both configurations so that their centers of mass lie in the origin:
+				$$\begin{align*}
+					\mathbf q_i &= \mathbf X_i- \mathbf t^0 \\
+					\mathbf p_i &= \mathbf x^*_i- \mathbf t
+				\end{align*}
+				$$
+				Moreover, to simplify the problem we search for the optimal linear transformation $\mathbf A$ instead of the optimal rotation $\mathbf R$. This means we have to minimize:
+				$$
+				\begin{equation*}
+				  \sum_i m_i (\mathbf A \mathbf q_i -\mathbf p_i)^2 
+				\end{equation*}
+				$$
+				Setting the derivatives with respect to the coefficients of A to zero gives us the optimal transformation:
+				$$\begin{equation*}
+					\mathbf A = \left (\sum_i m_i \mathbf p_i \mathbf q_i^T \right ) \left (\sum_i m_i \mathbf q_i \mathbf q_i^T \right )^{-1} = \mathbf A_{pq} \mathbf A_{qq}.
+			    \end{equation*}
+			    $$
+				</p>
+				
+			<h3>4. Extract rotation</h3>
+				
+				<p>The term $\mathbf A_{qq}$ is symmetric and therefore contains no rotation. Thus, the optimal rotation is the rotational part of $\mathbf A_{pq}$  which can be determined by a polar decomposition:
+				$$\mathbf A_{pq} = \mathbf R \mathbf S,$$
+				where $\mathbf R$ is an orthogonal matrix and $\mathbf S$ a symmetric matrix. If the configuration is not inverted, $\mathbf R$ is a rotation matrix. Otherwise $\mathbf R$ contains a reflection.					
+				</p>
+				
+			<h3>5. Determine goal positions</h3>
+			
+				<p>The goal positions are computed as:
+				$$
+				\mathbf g_i = \mathbf R_i \mathbf q_i + \mathbf t_i.
+				$$
+				</p>
+
+			<h3>6. Update positions and velocities</h3>
+			
+			Finally, we update the positions and velocity by the following modified time integration scheme: 
+			$$
+			\begin{eqnarray*}
+				\mathbf v_i(t+h) &=& \mathbf v_i(t) + \alpha \frac{\mathbf g_i(t) - \mathbf x_i(t)}{h} + \Delta t \frac{\mathbf f_{ext}(t)}{m} \\
+				\mathbf x_i(t+h) &=& \mathbf x_i(t) + \Delta t \mathbf v_i(t+h),
+			\end{eqnarray*}
+			$$
+			where $\alpha \in [0,1]$ is a user-defined stiffness parameter. A body is rigid if $\alpha=1$.
+
+			<h3>References</h3>
+			<ul>
+				<li>[MHTG05] Matthias Müller, Bruno Heidelberger, Matthias Teschner, Markus Gross. Meshless Deformations Based on Shape Matching. ACM Transactions on Graphics 24, 3, 2005</li>
+				<li>[BMM17] Jan Bender, Matthias Müller, Miles Macklin. A Survey on Position Based Dynamics, 2017. Eurographics Tutorials, 2017</li>
+			</ul>
+			
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Particle 
+	{
+		constructor (x, y) 
+		{
+			// mass
+			this.m = 1.0;
+			// reference coordinates
+			this.X = x;
+			this.Y = y;
+			// current coordinates
+			this.x = x;
+			this.y = y;
+			// old positions
+			this.xOld = x;
+			this.yOld = y;
+			// goal position
+			this.goal_x = 0.0;
+			this.goal_y = 0.0;
+			// velocity
+			this.vx = 0.0;
+			this.vy = 0.0;
+		}
+	}
+	
+	class Simulation
+	{
+		constructor()
+		{
+			this.particles = [];
+			this.stiffness = 0.25;
+			this.mass = 1.0;
+			this.totalMass = 0.0;
+			this.timeStepSize = 0.01;
+			this.time = 0;
+			
+			// initial center of mass
+			this.t0_x = 0.0;
+			this.t0_y = 0.0;
+
+			this.init();
+		}
+		
+		init()
+		{			
+			// create particles  
+			let i;
+			let j;
+			let w = 2;
+			let h = 2;
+			let s = 1.0;
+			for (i = 0; i < h; i++) 
+				for (j = 0; j < w; j++) 
+					this.particles.push(new Particle(s*(j-w/2+0.5), -s*i))
+			
+			// compute center of mass of reference configuration
+			this.t0_x = 0.0;
+			this.t0_y = 0.0;
+			this.totalMass = 0.0;
+			for (i = 0; i < this.particles.length; i++) 
+			{
+				this.t0_x += this.mass * this.particles[i].X;
+				this.t0_y += this.mass * this.particles[i].Y;
+				this.totalMass += this.mass;
+			}
+			this.t0_x /= this.totalMass;
+			this.t0_y /= this.totalMass;
+		}
+		
+		// perform a 2D polar decomposition: M = R*S
+		// where R is an orthogonal matrix and S is a symmetric matrix
+		polarDecomposition(M)
+		{
+			// determinant
+			let det = M[0][0]*M[1][1] - M[0][1]*M[1][0];
+			
+			let R = [[0,0],[0,0]];
+			if (det >= 0.00001)
+			{
+				R[0][0] = M[0][0] + M[1][1];
+				R[0][1] = M[0][1] - M[1][0];
+				R[1][0] = M[1][0] - M[0][1];
+				R[1][1] = M[1][1] + M[0][0];
+			}
+			else
+			{
+				R[0][0] = M[0][0] - M[1][1];
+				R[0][1] = M[0][1] + M[1][0];
+				R[1][0] = M[1][0] + M[0][1];
+				R[1][1] = M[1][1] - M[0][0];
+			}
+
+			let dl1 = R[1][0]*R[1][0] + R[0][0]*R[0][0];
+			let dl2 = R[1][1]*R[1][1] + R[0][1]*R[0][1];
+
+			if ((dl1 < 1.0e-12) || (dl2 < 1.0e-12))
+			{
+				R = [[1,0], [0,1]];
+				return R;
+			}
+
+			let l1 = 1.0/Math.sqrt(dl1);
+			let l2 = 1.0/Math.sqrt(dl2);
+
+			R[0][0] *= l1;
+			R[1][0] *= l1;
+			R[0][1] *= l2;
+			R[1][1] *= l2;
+			return R;
+		}
+
+		// Compute the sum A+B
+		matrixAdd(A, B)
+		{
+			return [[A[0][0]+B[0][0], A[0][1]+B[0][1]], 
+					[A[1][0]+B[1][0], A[1][1]+B[1][1]]];
+		}
+		
+		// Compute the product A*B
+		matrixMult(A, B)
+		{
+			return [[A[0][0]*B[0][0] + A[0][1]*B[1][0], A[0][0]*B[0][1] + A[0][1]*B[1][1]], 
+					[A[1][0]*B[0][0] + A[1][1]*B[1][0], A[1][0]*B[0][1] + A[1][1]*B[1][1]]];
+		}
+
+		// Compute the product A*x
+		matrixVecProd(A, x)
+		{
+			return [A[0][0]*x[0] + A[0][1]*x[1], 
+					A[1][0]*x[0] + A[1][1]*x[1]];
+		}
+		
+		// Compute the norm of matrix A
+		matrixNorm(A)
+		{
+			return Math.sqrt(A[0][0]*A[0][0] + A[0][1]*A[1][0] + A[1][0]*A[1][0]+ A[1][1]*A[1][1]);
+		}
+		
+		// Transpose matrix A
+		transpose(A)
+		{
+			return [[A[0][0], A[1][0]], 
+					[A[0][1], A[1][1]]];
+		}
+		
+		// simulation step
+		simulationStep()
+		{	
+			let dt = this.timeStepSize;
+						
+			// compute preview using symplectic Euler
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				let p = this.particles[i];
+				
+				// store old position for velocity update after the position correction
+				p.xOld = p.x;	
+				p.yOld = p.y;
+						
+				// integrate position
+				if (gui.simulateMotion)
+				{
+					p.x = p.x + dt * p.vx;
+					p.y = p.y + dt * p.vy;
+				}
+			}
+	
+			// shape matching
+			
+			// compute center of mass of current configuration
+			let t_x = 0.0;
+			let t_y = 0.0;
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				let p = this.particles[i];
+				t_x += this.mass * p.x;
+				t_y += this.mass * p.y;
+			}
+			t_x /= this.totalMass;
+			t_y /= this.totalMass;
+			
+			// compute moment matrix
+			let Apq = [[0,0], [0,0]];
+			let m = this.mass;
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				let part = this.particles[i];
+				let q = [part.X - this.t0_x, part.Y - this.t0_y];
+				let p = [part.x - t_x, part.y - t_y];
+				let dyadic = [[m*p[0]*q[0], m*p[0]*q[1]], [m*p[1]*q[0], m*p[1]*q[1]]];
+				Apq = this.matrixAdd(Apq, dyadic);
+			}
+
+			// extract rotation
+			let R = this.polarDecomposition(Apq);
+
+			// update positions & velocities
+			for (let i = 0; i < this.particles.length; i++) 
+			{
+				let part = this.particles[i];
+
+				// compute goal position
+				let q = [part.X - this.t0_x, part.Y - this.t0_y];
+				let goal = this.matrixVecProd(R, q);
+				part.goal_x = goal[0] + t_x;
+				part.goal_y = goal[1] + t_y;
+
+				if (gui.simulateMotion)
+				{
+					part.vx += this.stiffness/this.timeStepSize * (part.goal_x - part.x);
+					part.vy += this.stiffness/this.timeStepSize * (part.goal_y - part.y);
+					part.x = part.xOld + this.timeStepSize * part.vx;	
+					part.y = part.yOld + this.timeStepSize * part.vy;		
+				}
+			}
+
+			// update simulation time
+			this.time = this.time + dt;
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2};
+			this.zoom = 150;
+			this.particleRadius = 0.05;
+			this.selectedParticle = -1;
+			this.renderGoalPos = false;
+			this.simulateMotion = true;
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			delete this.sim;
+			this.sim = new Simulation();
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+
+			this.sim.stiffness = parseFloat(document.getElementById('stiffnessInput').value);
+			this.sim.timeStepSize = parseFloat(document.getElementById('timeStepSizeInput').value);
+			this.simulateMotion = document.getElementById('simulateMotion').checked;
+			this.renderGoalPos = document.getElementById('renderGoalPos').checked;
+
+			this.mainLoop();
+		}
+		
+		drawCoordinateSystem()
+		{
+			// draw x-axis
+			this.c.strokeStyle = "#FF0000";
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x+1*this.zoom, this.origin.y);
+			this.c.stroke();	
+
+			// draw y-axis
+			this.c.strokeStyle = "#00FF00";	
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x, this.origin.y-1*this.zoom);
+			this.c.stroke();		
+		}
+		
+		numToHex(n) 
+		{ 
+			let hex = Number(n).toString(16);
+			if (hex.length < 2)
+			   hex = "0" + hex;
+			return hex;
+		}
+		
+		hsvToRgb(h, s, v)
+		{
+			let i = Math.floor(h * 6);
+			let f = h * 6 - i;
+			let p = v * (1 - s);
+			let q = v * (1 - f * s);
+			let t = v * (1 - (1 - f) * s);
+
+			let 	r = 0;
+			let 	g = 0;
+			let 	b = 0;
+			switch (i % 6)
+			{
+				case 0: r = v, g = t, b = p; break;
+				case 1: r = q, g = v, b = p; break;
+				case 2: r = p, g = v, b = t; break;
+				case 3: r = p, g = q, b = v; break;
+				case 4: r = t, g = p, b = v; break;
+				case 5: r = v, g = p, b = q; break;
+			}
+			let rh = this.numToHex(Math.round(r * 255));
+			let gh = this.numToHex(Math.round(g * 255));
+			let bh = this.numToHex(Math.round(b * 255));
+			//console.log(rh)
+			return "#" + rh + gh + bh;
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			
+			this.drawCoordinateSystem();
+			
+			// draw contour
+			let w = 2;
+			let h = 2;
+			this.c.strokeStyle = "#666666";
+			this.c.fillStyle = "#556677";
+			this.c.beginPath();
+			let p = this.sim.particles[0];
+			this.c.moveTo(this.origin.x + p.x*this.zoom, this.origin.y - p.y*this.zoom);
+			for (let i = 1; i < w; i++) 
+			{
+				let p = this.sim.particles[i];
+				this.c.lineTo(this.origin.x + p.x*this.zoom, this.origin.y - p.y*this.zoom);
+			}
+			for (let i = 1; i < h; i++) 
+			{
+				let p = this.sim.particles[i*w + w-1];
+				this.c.lineTo(this.origin.x + p.x*this.zoom, this.origin.y - p.y*this.zoom);
+			}
+			for (let i = w; i > 0; i--) 
+			{
+				let p = this.sim.particles[(h-1)*w + w-i];
+				this.c.lineTo(this.origin.x + p.x*this.zoom, this.origin.y - p.y*this.zoom);
+			}
+			for (let i = h; i > 0; i--) 
+			{
+				let p = this.sim.particles[(i-1)*w];
+				this.c.lineTo(this.origin.x + p.x*this.zoom, this.origin.y - p.y*this.zoom);
+			}
+			this.c.fill();
+			
+			// draw particles as circles
+			for (let i = 0; i < this.sim.particles.length; i++) 
+			{
+				let p = this.sim.particles[i];
+				let r = this.particleRadius;
+				if (i == this.selectedParticle)
+				{
+					// draw selected particle in red with larger radius
+					this.c.fillStyle = "#FF0000";	
+					r = 3*r;
+				}
+				else 
+					this.c.fillStyle = "#0000FF";	
+				let px = this.origin.x + p.x * this.zoom;
+				let py = this.origin.y - p.y * this.zoom;
+				
+				this.c.beginPath();			
+				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+				this.c.closePath();
+				this.c.fill();
+
+				// show goal positions
+				if (this.renderGoalPos)
+				{
+					this.c.fillStyle = "#AA00AA";	
+					let gx = this.origin.x + p.goal_x * this.zoom;
+					let gy = this.origin.y - p.goal_y * this.zoom;
+					
+					this.c.beginPath();			
+					this.c.arc(gx, gy, this.particleRadius * this.zoom, 0, Math.PI*2, true); 
+					this.c.closePath();
+					this.c.fill();
+
+					this.c.strokeStyle = "#000000";
+					this.c.beginPath();		
+					this.c.moveTo(this.origin.x + p.x*this.zoom, this.origin.y - p.y*this.zoom);
+					this.c.lineTo(this.origin.x + p.goal_x*this.zoom, this.origin.y - p.goal_y*this.zoom);
+					this.c.closePath();
+					this.c.stroke();
+				}
+			}
+		}
+		
+		mainLoop()
+		{
+			// perform multiple sim steps per render step
+			for (let i=0; i < 8; i++)
+			{
+				let t0 = performance.now();
+				
+				if (!this.pause)
+				this.sim.simulationStep();
+
+				let t1 = performance.now();
+				this.timeSum += t1 - t0;
+				this.counter += 1;
+					
+				if (this.counter % 50 == 0)				
+				{
+					this.timeSum /= this.counter;
+					document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(2);		
+					this.timeSum = 0.0;
+					this.counter = 0;
+				}	
+				document.getElementById("time").innerHTML = this.sim.time.toFixed(2);	
+			}			
+
+			this.draw();
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+		}
+		
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+		
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);
+				for (let i = 0; i < this.sim.particles.length; i++) 
+				{
+					let p = this.sim.particles[i];
+					let px = this.origin.x + p.x * this.zoom;
+					let py = this.origin.y - p.y * this.zoom;
+					let dx = px - mousePos.x
+					let dy = py - mousePos.y
+					let dist2 = Math.sqrt(dx * dx + dy * dy)
+					if (dist2 < 10)
+					{
+						this.selectedParticle = i;
+						break;
+					}				
+				}			
+			}
+		}
+		
+		getMousePos(canvas, event) 
+		{
+			let rect = canvas.getBoundingClientRect();
+			return {
+				x: event.clientX - rect.left,
+				y: event.clientY - rect.top
+			};
+		}
+	
+		mouseMove(event)
+		{
+			if (this.selectedParticle != -1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);		
+				this.sim.particles[this.selectedParticle].x = (mousePos.x - this.origin.x) / this.zoom;
+				this.sim.particles[this.selectedParticle].y = -(mousePos.y - this.origin.y) / this.zoom;
+			}
+		}
+		
+		mouseUp(event) 
+		{
+			this.selectedParticle = -1;
+		}
+		
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+		}
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>
