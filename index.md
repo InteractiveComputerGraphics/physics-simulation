@@ -41,6 +41,7 @@ I hope the examples and their documentation help you to learn something about th
 * [Position-Based Dynamics (PBD)](examples/pbd.html)
 * [eXtended Position-Based Dynamics (XPBD)](examples/xpbd.html)
 * [Shape Matching](examples/shape_matching.html)
+* [Region-Based Shape Matching](examples/region_based_shape_matching.html)
 
 # Fluids
 
