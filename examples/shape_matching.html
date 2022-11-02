@@ -330,7 +330,7 @@
 				p.yOld = p.y;
 						
 				// integrate position
-				if (gui.simulateMotion)
+				if ((gui.simulateMotion) && (i != gui.selectedParticle))
 				{
 					p.x = p.x + dt * p.vx;
 					p.y = p.y + dt * p.vy;
@@ -377,7 +377,7 @@
 				part.goal_x = goal[0] + t_x;
 				part.goal_y = goal[1] + t_y;
 
-				if (gui.simulateMotion)
+				if ((gui.simulateMotion) && (i != gui.selectedParticle))
 				{
 					part.vx += this.stiffness/this.timeStepSize * (part.goal_x - part.x);
 					part.vy += this.stiffness/this.timeStepSize * (part.goal_y - part.y);
