@@ -35,6 +35,7 @@ I hope the examples and their documentation help you to learn something about th
 ### Impulse-Based Dynamic Simulation
 
 * [Impulse-Based Dynamic Simulation (IBDS)](examples/ibds.html)
+* [Impulse-based collision handling for rigid bodies](examples/rigid_body_collision.html)
 
 ### Position-Based Dynamics
 

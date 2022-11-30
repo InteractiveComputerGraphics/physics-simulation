@@ -1,0 +1,660 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Rigid Body Collisions</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Rigid Body Collisions</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table>		
+				<col width="180" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Current time</label></td>
+					<td><span id="time">0.00</span> s</td>
+				</tr>
+				<tr>
+					<td><label>Time per sim. step</label></td>
+					<td><span id="timePerStep">0.00</span> ms</td>
+				</tr>
+				<tr>
+					<td><label># rigid bodies</label></td>
+					<td><span id="numRigidBodies">0</span></td>
+				</tr>
+				<tr>
+					<td><label for="timeStepSizeInput">Time step size</label></td>
+					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.005" step="0.001"></td>
+				</tr>
+				<tr>
+					<td><label for="gravityInput">Gravity</label></td>
+					<td><input onchange="gui.sim.gravity=parseFloat(value)" id="gravityInput" type="number" value="-9.81" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="stiffnessInput">Penalty stiffness</label></td>
+					<td><input onchange="gui.sim.stiffness=parseFloat(value)" id="stiffnessInput" type="number" value="100" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="restitutionInput">Restitution coefficient</label></td>
+					<td><input onchange="gui.sim.restitution=parseFloat(value)" id="restitutionInput" type="number" value="0.5" step="0.05"></td>
+				</tr>
+				<tr>
+					<td><label for="frictionInput">Friction coefficient</label></td>
+					<td><input onchange="gui.sim.friction=parseFloat(value)" id="frictionInput" type="number" value="0.02" step="0.01"></td>
+				</tr>
+				<tr>
+					<td><label for="useImpulsesInput">Use impulses</label></td>
+					<td><input onchange="gui.sim.useImpulses=this.checked" id="useImpulsesInput" type="checkbox" value="Impulse" checked></td>
+				</tr>
+				<tr>
+					<td><label for="usePenaltyForceInput">Use penalty force</label></td>
+					<td><input onchange="gui.sim.usePenaltyForce=this.checked" id="usePenaltyForceInput" type="checkbox" value="Penalty" checked></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>Collision handling for rigid bodies:</h2>
+				This example shows a simple method handling collisions between rigid bodies and a floor:
+				<ol>
+					<li>detect collisions</li>
+					<li>compute impulses to resolve collisions and to simulate repulsion</li>
+					<li>compute penalty forces to resolve penetrations due to numerical drift</li>
+					<li>time integration to get new rigid body positions, rotations and velocities</li>
+				</ol>
+				<p>A rigid body has the following properties: </p>
+				<ul>
+					<li>a mass $m$,</li>
+					<li>a position $\mathbf{x}$ (position of its center of mass),</li>
+					<li>a velocity $\mathbf v$,</li>
+					<li>an inertia tensor $I$ (note: in 3D this is not a scalar but a 3x3 tensor),</li>
+					<li>a rotation angle $\alpha$ (note: in 3D we need a rotation matrix or a quaternion),</li>
+					<li>an angular velocity $\omega$.</li>
+				</ul>
+
+			<h3>1. Detect collisions</h3>
+			
+				<p>In our example we use a very simple collision detection. Since all rigid bodies have a box shape, we just test all four vertices of the box if they are below the floor. This is done by checking if the y-coordinate is less than 0 (which defines the floor plane y=0).</p>
+				<p>Typically the four vertices of the box geometry are stored in local coordinates. We denote this vertices as $\mathbf b^\text{local}_i$. So before the collision test we have to transform the vertices to global coordinates. To transform the four vertices of the box of a rigid body to global coordinates, we need the angle $\alpha$ and the position $\mathbf x$ of the rigid body:
+				$$\begin{align*}
+				\mathbf R &= \begin{pmatrix} \cos(\alpha) & -\sin(\alpha) \\ \sin(\alpha) & \cos(\alpha) \end{pmatrix} \\
+				\mathbf b^\text{global} &= \mathbf R \mathbf b^\text{local} + \mathbf x.
+				\end{align*}
+				$$
+				</p>
+
+				
+			<h3>2. Compute collision impulses</h3>
+				<h4>2.1. Relative velocity in contact points</h4>
+				<p>First, we compute the relative point velocities for the two contact points of a collision:
+				$$\mathbf u_\text{rel} = \mathbf u_1 - \mathbf u_2,$$
+				where the point velocity for a point in a rigid body is defined as
+				$$\mathbf u = \mathbf v + \omega \times \mathbf r$$
+				and $\mathbf r = \mathbf c - \mathbf x$ is the world space vector from center of mass to the contact point $\mathbf c$.
+				</p>
+				<p>Note that in our 2D case the cross product between the scalar $\omega$ and the vector $\mathbf r$ is defined as $\omega \times \mathbf r = [-\omega * \mathbf r_y,\ \omega * \mathbf r_x]^T$</p>
+				
+				<h4>2.2. Decomposition in normal and tangential velocity</h4>
+				<p>In the next step we decompose the velocity vector in a normal part (in direction of the contact normal $\mathbf n$) and a tangential part:
+				$$\begin{align*}
+					\mathbf u^\text{n} &= (\mathbf u_\text{rel} \cdot \mathbf n) \mathbf n \\
+					\mathbf u^\text{t} &= \mathbf u_\text{rel} - \mathbf u^\text{n}.
+				\end{align*}$$
+				</p>
+
+				<h4>2.3. Impulse computation</h4>
+				<p>Now we can compute an impulse that should stop the motion in normal direction by using the impulse-based dynamic simulation approach (see also the example <a href="ibds.html">ibds.html</a>). The velocity constraint is defined as:
+				$$C(\mathbf u_1, \mathbf u_2) = (\mathbf u_1 - \mathbf u_2) \cdot \mathbf n = 0.$$
+				So the relative velocity in normal direction should be zero. For the impulse-based simulation we need the first derivatives with respect to $\mathbf v$ and $\omega$ and finally we get the required impulse as
+				$$\mathbf p' = -\frac{1}{\frac 1 m + (\mathbf r \times \mathbf n)^2 I^{-1}} \mathbf u^\text{n},
+				$$
+				where the vector cross product in 2D is defined as $\mathbf r \times \mathbf n = \mathbf r_x  \mathbf n_y - \mathbf r_y  \mathbf n_x$.
+				</p>
+				<p>Since we do not only want to stop the motion in normal direction but also want to simulate repulsion, we compute the final impulse using the restitution coefficient $e$ as
+				$$\mathbf p = (1+e) \mathbf p'.$$
+				</p>
+
+				<h4>2.4. Apply impulse</h4>
+				<p>Finally, we check if the resulting impulse points in direction of the contact normal ($\mathbf p \cdot \mathbf n > 0$) to avoid sticking. If this is the case, we apply the impulse and adapt the velocities of the corresponding rigid body as:
+					$$\begin{align*}
+						\mathbf v &:= \mathbf v + \frac{1}{m} \mathbf p \\
+						\omega &:= \omega + I^{-1} (\mathbf r \times \mathbf p).
+					\end{align*}$$
+				</p>
+					
+				<h4>2.5. Dynamic friction</h4>
+				<p>A simple dynamic friction impulse can be determined according to Coulomb's law as 
+					$$\mathbf p^\text{friction} = -\mu \| \mathbf p \| \frac{\mathbf u^\text{t}}{\| \mathbf u^\text{t}\|},
+					$$
+					where $\mu$ is the friction coefficient.
+				</p>				
+					
+				
+			<h3>3. Compute penalty forces</h3>
+				<p>So far the system was solved on velocity level by computing impulses. Therefore, position errors (penetration) due to numerical errors cannot be considered. These errors sum up over the simulation and the bodies will penetrate the floor. This is also known as numerical drift.</p>
+				<p>To solve this problem we add a penalty force for each penetration that counteracts the violation on position level. The violation is determined by the penetration depth $d$ of the contact point. In our example this is simply the negative y-coordinate of the box vertex (since the floor was defined by y=0). Then the penalty force and a corresponding friction force are determined as
+				$$\begin{align*}
+				\mathbf f^\text{n} &= k d \mathbf n, \\
+				\mathbf f^\text{friction} &= -\mu \| \mathbf f^\text{n} \| \frac{\mathbf u^\text{t}}{\| \mathbf u^\text{t}\|}.
+				\end{align*}$$
+				Finally, we also have to update the torque accordingly: 
+				$$\tau := \tau +  (\mathbf r \times (\mathbf f^\text{n} + \mathbf f^\text{friction})).
+				$$
+				</p>
+
+			
+			<h3>4. Time integration</h3>
+				The rigid bodies are advected by numerical time integration. In our case we use a symplectic Euler method:
+				$$\begin{align*}
+					\mathbf v(t + \Delta t) &= \mathbf v(t) + \frac{\Delta t}{m} \mathbf f^{\text{ext}}  \\
+					\mathbf x(t + \Delta t) &= \mathbf x(t) + \Delta t \mathbf v(t + \Delta t) \\
+					\omega(t + \Delta t) &= \omega(t) + \Delta t I^{-1} \tau \\
+					\alpha(t + \Delta t) &= \alpha(t) + \Delta t \omega(t + \Delta t),
+				\end{align*}$$
+				where $\mathbf f^{\text{ext}}$ are the external forces, $\omega$ is the angular velocity and $\alpha$ is the rotation angle.
+			
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class RigidBody 
+	{
+		constructor (x, y, vx, vy, rot, angVel) 
+		{
+			this.x = x;
+			this.y = y;
+			this.fx = 0.0;
+			this.fy = 0.0;
+			this.vx = vx;
+			this.vy = vy;
+			this.rotation = rot;
+			this.omega = angVel;
+			this.torque = 0.0;
+			this.mass = 1.0;
+
+			// Box dimensions L x W
+			this.L = 2;
+			this.W = 1;
+			this.box=[[-this.L/2,-this.W/2],[-this.L/2,this.W/2],[this.L/2,this.W/2],[this.L/2,-this.W/2]];
+
+			// Compute inertia for boxes
+			this.inertia = this.mass * (this.L * this.L + this.W * this.W) / 12.0;
+			this.inertiaInv = 1.0 / this.inertia;
+		}
+	}
+	
+	class Simulation
+	{
+		constructor()
+		{
+			this.rigidBodies = [];
+			this.gravity = -9.81;
+			this.timeStepSize = 0.02;
+			this.time = 0;
+			this.usePenaltyForce = true;
+			this.useImpulses = true;
+			this.stiffness = 100;
+			this.friction = 0.02;
+			this.restitution = 0.5;
+
+			this.init();
+		}
+
+		init()
+		{			
+			// create rigid bodies  
+			let i;
+			let j;
+			// Number of boxes in each dimension (width x height)
+			let w = 5;
+			let h = 1;
+			for (i = 0; i < h; i++) 
+			{
+				for (j = 0; j < w; j++) 
+				{
+					let angle = 180.0*Math.random() * (Math.PI / 180.0);
+					this.rigidBodies.push(new RigidBody(3*j-5, 3*i+5, 0, 0, angle, 0))
+				}
+			}
+		}
+
+		symplecticEuler()
+		{
+			let dt = this.timeStepSize;
+
+			// symplectic Euler step
+			for (let i = 0; i < this.rigidBodies.length; i++) 
+			{
+				let rb = this.rigidBodies[i];
+
+				// integrate velocity considering gravitational acceleration and other forces 
+				rb.vx = rb.vx + dt * rb.fx / rb.mass;
+				rb.vy = rb.vy + dt * (rb.fy / rb.mass + this.gravity);
+
+				// integrate position
+				rb.x = rb.x + dt * rb.vx;
+				rb.y = rb.y + dt * rb.vy;
+
+				// integrate angular velocity
+				rb.omega = rb.omega + dt * (rb.inertiaInv * rb.torque);
+
+				// integrate rotation
+				rb.rotation = rb.rotation + dt * rb.omega;
+				
+				
+			}
+		}
+
+		// Compute the product A*x
+		matrixVecProd(A, x)
+		{
+			return [A[0][0]*x[0] + A[0][1]*x[1], 
+					A[1][0]*x[0] + A[1][1]*x[1]];
+		}
+
+		vecAdd(x, y)
+		{
+			return [x[0]+y[0], x[1]+y[1]];
+		}
+
+		vecSub(x, y)
+		{
+			return [x[0]-y[0], x[1]-y[1]];
+		}
+
+		// Compute the norm of vector x
+		vecNorm(x)
+		{
+			return Math.sqrt(x[0]*x[0] + x[1]*x[1]);
+		}
+
+		// multiply vector x with scalar s
+		mult(s, x)
+		{
+			return [s*x[0], s*x[1]];
+		}
+
+		dot(x, y)
+		{
+			return x[0]*y[0] + x[1]*y[1];
+		}
+
+		// 2D cross product between a scalar s and a vectors a 
+		crossProduct12(s, a)
+		{
+			return [-s * a[1], s * a[0]];
+		}
+
+		// 2D cross product between two vectors a and b
+		 crossProduct22(a, b)
+		{
+			return a[0] * b[1] - a[1] * b[0];
+		}
+
+		computeContactForces()
+		{
+			let damping = 0.1;
+			let normal = [0,1];
+			let numBodies = this.rigidBodies.length;
+			
+			// reset force vector
+			for (let i = 0; i < numBodies; i++)
+			{
+				let rb = this.rigidBodies[i];
+				rb.fx = 0.0;
+				rb.fy = 0.0;
+				rb.torque = 0.0;
+			}
+			
+			// compute contact forces
+			for (let i = 0; i < numBodies; i++)
+			{
+				let rb = this.rigidBodies[i];
+
+				// Rotation matrix of rigid body
+				let angle = rb.rotation;
+				let R = [	[Math.cos(angle), -Math.sin(angle)], 
+							[Math.sin(angle), Math.cos(angle)]]	;
+								
+				// loop over the 4 vertices of the box
+				for (let j = 0; j < 4; j++)
+				{
+					// compute world space vector from center of mass to vertex x of box: r = R * x_local
+					// note that the center of mass in local coordinates is in 0
+					let r = this.matrixVecProd(R, rb.box[j]);
+					// vertex in world space: x_global = R*x_local + center_of_mass
+					let vertex_x = r[0] + rb.x;
+					let vertex_y = r[1] + rb.y;
+					
+					// if y-coordinate is smaller than 0, we have a collision with the floor plane (y=0)
+					if (vertex_y < 0.0)
+					{		
+						// compute point velocity for vertex: u = v + omega x r
+						let v = [rb.vx, rb.vy];
+						let u = this.vecAdd(v, this.crossProduct12(rb.omega, r));
+
+						// decompose the velocity vector in normal part and tangential part
+						let u_normal = this.dot(u, normal);		// normal part (scalar)
+						let un = this.mult(u_normal, normal);	// normal part (vector)
+						
+						// tangential part: u - un 
+						let t = this.vecSub(u, un);
+						
+						// normalize tangential part 
+						let tl = this.vecNorm(t);
+						if (tl > 0.0001)
+							t = this.mult(1.0/tl, t);
+							
+						// compute impulse in normal direction
+						let rxn = this.crossProduct22(r, normal);
+						let denom = 1.0/rb.mass + rxn*rxn * rb.inertiaInv;					
+						// the impulse should stop the motion in normal direction plus 
+						// simulate a repulsion according to the restitution coefficient
+						let p = this.mult(-(1.0 + this.restitution)/denom, un);	
+						
+						// compute an impulse to simulate dynamic friction 
+						let frictionImpulse = this.mult(-this.friction*this.vecNorm(p), t);
+						
+						// sum up impulses and only apply them if they point in the direction of the normal 
+						p = this.vecAdd(p, frictionImpulse);						
+						if (this.dot(p, normal) > 0.0)
+						{
+							if (this.useImpulses)
+							{
+								rb.vx = rb.vx + 1.0/rb.mass * p[0];
+								rb.vy = rb.vy + 1.0/rb.mass * p[1];
+								rb.omega = rb.omega + rb.inertiaInv * this.crossProduct22(r, p);
+							}
+						}
+						
+						// The system is solved on velocity level by computing impulses.
+						// However, position errors (penetration) due to numerical errors
+						// are not considered. These errors sum up over the simulation and
+						// the bodies will penetrate the floor.
+						// 
+						// Solution: Add a penalty force that counteracts the violation
+						// on position level. 
+					
+						if (this.usePenaltyForce)
+						{
+							// penalty force
+							let normalForce = [0, this.stiffness*(-vertex_y)];
+							// corresponding dynamic friction force
+							let frictionForce = this.mult(-this.friction*this.vecNorm(normalForce), t);
+							// update force and torque of the body
+							rb.fx = rb.fx + normalForce[0] + frictionForce[0];
+							rb.fy = rb.fy + normalForce[1] + frictionForce[1];
+							rb.torque = rb.torque + this.crossProduct22(r, normalForce);
+							rb.torque = rb.torque + this.crossProduct22(r, frictionForce);
+						}
+					}  
+				}
+			}
+		}
+			
+		// simulation step
+		simulationStep()
+		{	
+			let dt = this.timeStepSize;
+
+			// contact handling
+			this.computeContactForces();
+
+			// time integration
+			this.symplecticEuler();
+
+			// update simulation time
+			this.time = this.time + dt;
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2};
+			this.zoom = 50;
+			this.rigidBodySize = 1.0;
+			this.selectedBody = -1;
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+		}
+		
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			delete this.sim;
+			this.sim = new Simulation();
+			
+			this.timeSum = 0.0;
+			this.counter = 0;
+
+			this.sim.gravity = parseFloat(document.getElementById('gravityInput').value);
+			this.sim.timeStepSize = parseFloat(document.getElementById('timeStepSizeInput').value);
+			this.sim.stiffness = parseFloat(document.getElementById('stiffnessInput').value);
+			this.sim.friction = parseFloat(document.getElementById('frictionInput').value);
+			this.sim.restitution = parseFloat(document.getElementById('restitutionInput').value);
+			this.sim.usePenaltyForce = (document.getElementById('usePenaltyForceInput').checked);
+			this.sim.useImpulses = (document.getElementById('useImpulsesInput').checked);
+	
+			
+			this.mainLoop();
+		}
+		
+		drawCoordinateSystem()
+		{
+			// draw x-axis
+			this.c.strokeStyle = "#FF0000";
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x+1*this.zoom, this.origin.y);
+			this.c.stroke();	
+
+			// draw y-axis
+			this.c.strokeStyle = "#00FF00";	
+			this.c.beginPath();
+			this.c.moveTo(this.origin.x, this.origin.y);
+			this.c.lineTo(this.origin.x, this.origin.y-1*this.zoom);
+			this.c.stroke();		
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			
+			this.drawCoordinateSystem();
+
+			let r = this.rigidBodySize;
+			let s = r * this.zoom;
+			let s2 = 0.5*s;
+			
+			// draw rigid bodies as boxes
+			for (let i = 0; i < this.sim.rigidBodies.length; i++) 
+			{
+				let rb = this.sim.rigidBodies[i];
+				
+				this.c.strokeStyle = "#000000";
+				if (i == this.selectedBody)
+					this.c.fillStyle = "#FF0000";
+				else
+					this.c.fillStyle = "#0055DD";
+				let px = this.origin.x + rb.x * this.zoom;
+				let py = this.origin.y - rb.y * this.zoom;
+				
+				this.c.save();
+				this.c.beginPath();			
+				this.c.translate(px, py);
+
+				// we use the negative angle since the rotate command requires the clockwise rotation angle
+				this.c.rotate(-rb.rotation);
+
+				this.c.moveTo(this.zoom * rb.box[0][0], this.zoom * rb.box[0][1]);
+				this.c.lineTo(this.zoom * rb.box[1][0], this.zoom * rb.box[1][1]);
+				this.c.lineTo(this.zoom * rb.box[2][0], this.zoom * rb.box[2][1]);
+				this.c.lineTo(this.zoom * rb.box[3][0], this.zoom * rb.box[3][1]);
+
+				this.c.closePath();
+				this.c.fill();
+				this.c.stroke();
+				this.c.restore();
+			}
+			
+			// draw floor 
+			this.c.strokeStyle = "#000000";
+			this.c.fillStyle = "#AAAAAAAA";
+			this.c.beginPath();			
+			this.c.rect(0,this.origin.y+1,this.canvas.width, this.canvas.height/2);
+			this.c.fill();
+			this.c.stroke();
+			this.c.restore();
+		}
+		
+		mainLoop()
+		{
+			// perform multiple sim steps per render step
+			for (let i=0; i < 8; i++)
+			{
+				let t0 = performance.now();
+				
+				this.sim.simulationStep();
+
+				let t1 = performance.now();
+				this.timeSum += t1 - t0;
+				this.counter += 1;
+					
+				if (this.counter % 50 == 0)				
+				{
+					this.timeSum /= this.counter;
+					document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(2);	
+					document.getElementById("numRigidBodies").innerHTML = this.sim.rigidBodies.length;
+					this.timeSum = 0.0;
+					this.counter = 0;
+				}	
+				document.getElementById("time").innerHTML = this.sim.time.toFixed(2);	
+			}			
+
+			this.draw();
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));		
+		}
+		
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+		
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1)
+			{
+				let r = this.rigidBodySize;
+				let s = r * this.zoom;
+				let s2 = 0.5*s;
+
+				let mousePos = this.getMousePos(this.canvas, event);
+				for (let i = 0; i < this.sim.rigidBodies.length; i++) 
+				{
+					let rb = this.sim.rigidBodies[i];
+					let x = this.origin.x + rb.x * this.zoom;
+					let y = this.origin.y - rb.y * this.zoom;
+					let dx = x - mousePos.x;
+					let dy = y - mousePos.y;
+					let dist2 = Math.sqrt(dx * dx + dy * dy)
+					if (dist2 < 40)
+					{
+						this.selectedBody = i;
+						break;
+					}				
+				}	
+			}
+		}
+		
+		getMousePos(canvas, event) 
+		{
+			let rect = canvas.getBoundingClientRect();
+			return {
+				x: event.clientX - rect.left,
+				y: event.clientY - rect.top
+			};
+		}
+	
+		mouseMove(event)
+		{
+			if (this.selectedBody != -1)
+			{
+				let mousePos = this.getMousePos(this.canvas, event);		
+				this.sim.rigidBodies[this.selectedBody].x = (mousePos.x - this.origin.x) / this.zoom;
+				this.sim.rigidBodies[this.selectedBody].y = -(mousePos.y - this.origin.y) / this.zoom;
+			}
+		}
+		
+		mouseUp(event) 
+		{
+			this.selectedBody = -1;
+		}
+		
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 1) 
+				this.zoom = 1;
+		}
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>
