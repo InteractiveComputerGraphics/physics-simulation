@@ -141,7 +141,7 @@
 				The position correction for a particle is determined using the Lagrange multiplier:
 					$$\begin{align*}
 					\Delta \mathbf x_{i_1} &= \frac{1}{m_{i_1}} \frac{\partial C_i}{\partial \mathbf x_{i_1}} \lambda_i = -\frac{\frac{1}{m_{i_1}}}{\frac{1}{m_{i_1}} + \frac{1}{m_{i_2}}}(\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|-d)\frac{\mathbf{x}_{i_1}- \mathbf{x}_{i_2}}{\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|} \\
-					\Delta \mathbf x_{i_2} &= \frac{1}{m_{i_2}} \frac{\partial C_i}{\partial \mathbf x_{i_2}} \lambda_i = +\frac{\frac{1}{m_{i_1}}}{\frac{1}{m_{i_1}} + \frac{1}{m_{i_2}}}(\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|-d)\frac{\mathbf{x}_{i_1}- \mathbf{x}_{i_2}}{\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|} 
+					\Delta \mathbf x_{i_2} &= \frac{1}{m_{i_2}} \frac{\partial C_i}{\partial \mathbf x_{i_2}} \lambda_i = +\frac{\frac{1}{m_{i_2}}}{\frac{1}{m_{i_1}} + \frac{1}{m_{i_2}}}(\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|-d)\frac{\mathbf{x}_{i_1}- \mathbf{x}_{i_2}}{\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|} 
 					\end{align*}$$
 				and the correction is applied to update $\mathbf x^*$ as
 					$$\mathbf x^* := \mathbf x^* + \Delta \mathbf x.$$
