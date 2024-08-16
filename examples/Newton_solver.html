@@ -65,7 +65,7 @@
 			$$\begin{equation*}
 			x_{n+1} = x_{n} - \frac{f(x_n)}{f'(x_n)}
 		   \end{equation*}$$
-		   <p>If the initial guess $x_0$ is close enough to the solution and $f'(x_0) \neq 0$, the method usually converges.</p>
+		   <p>If the initial guess $x_0$ is close enough to the solution and $f'(x_n) \neq 0$, the method usually converges.</p>
 		</td></tr>
 	</table>	
 	
@@ -121,114 +121,94 @@
 		{
 			return x - f(x) / grad_f(x);
 		}
-		
-		plotFunctions()
-		{	
-			let x = -3;
-			let y = 0.5;
-			let num_steps = 5000;
-			let xValues = [];
-			let yValues_quadratic = [];
-			let yValues_cubic = [];
-			let yValues_trigonometric = [];
 
-			
+		computeData(fct, grad_fct, x0, data)
+		{
+			let xValues = [];
+			let yValues = [];
+			let x_newton = []
+			let y_newton = []
+			let current_x = x0
+
+			let x = -3;
+			let num_steps = 5000;			
 			for (let i = 0; i <= num_steps; i++) 
 			{
 				xValues.push(x);
-				yValues_quadratic.push(this.quadratic_function(x));
-				yValues_cubic.push(this.cubic_function(x));
-				yValues_trigonometric.push(this.trigonometric_function(x,y));
-				
+				yValues.push(fct(x));			
 				x += 6 / num_steps;
-				y += 1.0 / num_steps;
 			}
 
-			let current_x = 3.0
+			x_newton.push(current_x)
+			y_newton.push(0)
+			for (let i = 0; i < this.num_newton_steps; i++) 
+			{
+				x_newton.push(current_x)
+				y_newton.push(fct(current_x))
+				current_x = this.newton_step(fct, grad_fct, current_x)
+				x_newton.push(current_x)
+				y_newton.push(0)
+			}
+
+			var trace_quadratic = {
+				x: xValues,
+				y: yValues,
+				name: "function",
+				showlegend: true
+			  };
+  
+			data.push(trace_quadratic);
+			for (let i = 0; i < this.num_newton_steps+1; i++) 
+			{
+				if ( i < this.num_newton_steps)
+				data.push({
+				type: 'line',
+				x: [x_newton[2*i+1], x_newton[2*i+2]],
+				y: [y_newton[2*i+1], y_newton[2*i+2]],
+				line: {
+					color: 'rgb(0, 127, 0)',
+					width: 2,
+				},
+				name: "tangent",
+				showlegend: i==0
+				})
+			
+
+				data.push({
+					type: 'line',
+					x: [x_newton[2*i], x_newton[2*i+1]],
+					y: [y_newton[2*i], y_newton[2*i+1]],
+					line: {
+						color: 'rgb(0, 0, 0)',
+						width: 2,
+						dash: "dash",
+					},
+					text: ["x_" + i.toString(), ""],
+					textposition: "bottom center",
+					mode:'lines+markers+text',	
+					name: "x_n",
+					showlegend: i==0
+				})
+			}
+		}
+		
+		plotFunctions()
+		{	
 			var data = [];
 			if (this.fct == "Quadratic function")
 			{
-				let x_newton = []
-				let y_newton = []
-				for (let i = 0; i < this.num_newton_steps; i++) 
-				{
-					x_newton.push(current_x)
-					y_newton.push(this.quadratic_function(current_x))
-					current_x = this.newton_step(this.quadratic_function, this.grad_quadratic_function, current_x)
-					x_newton.push(current_x)
-					y_newton.push(0)
-				}
-
-				var trace_quadratic = {
-					x: xValues,
-					y: yValues_quadratic,
-					name: "quadr. fct."
-				  };
-	  
-				  var trace_quadratic_newton = {
-					  x: x_newton,
-					  y: y_newton,
-					  name: "Newton - quadr. fct."
-				  };
-				  data = [trace_quadratic, trace_quadratic_newton];
+				this.computeData(this.quadratic_function, this.grad_quadratic_function, 3.0, data)				
 			}
 
 			if (this.fct == "Cubic function")
 			{
-				let x_newton = []
-				let y_newton = []
-				for (let i = 0; i < this.num_newton_steps; i++) 
-				{
-					x_newton.push(current_x)
-					y_newton.push(this.cubic_function(current_x))
-					current_x = this.newton_step(this.cubic_function, this.grad_cubic_function, current_x)
-					x_newton.push(current_x)
-					y_newton.push(0)
-				}
-
-				var trace_cubic = {
-					x: xValues,
-					y: yValues_cubic,
-					name: "cubic fct."
-				  };
-	  
-				  var trace_cubic_newton = {
-					  x: x_newton,
-					  y: y_newton,
-					  name: "Newton - cubic fct."
-				  };
-				  data = [trace_cubic, trace_cubic_newton];
+				this.computeData(this.cubic_function, this.grad_cubic_function, 3.0, data)				
 			}
 
 			if (this.fct == "Trigonometric function")
 			{
-				current_x = 0.465
-				let x_newton_trig = []
-				let y_newton_trig = []
-				console.log(this.num_newton_steps)
-				for (let i = 0; i < this.num_newton_steps; i++) 
-				{
-					x_newton_trig.push(current_x)
-					y_newton_trig.push(this.trigonometric_function(current_x))
-					current_x = this.newton_step(this.trigonometric_function, this.grad_trigonometric_function, current_x)
-					x_newton_trig.push(current_x)
-					y_newton_trig.push(0)
-				}
-
-				var trace_trigonometric = {
-					x: xValues,
-					y: yValues_trigonometric,
-					name: "trig. fct."
-				  };
-	  
-				  var trace_trigonometric_newton = {
-					  x: x_newton_trig,
-					  y: y_newton_trig,	
-					  name: "Newton - trig. fct."
-				  };
-				  data = [trace_trigonometric, trace_trigonometric_newton];
-			}		
-						
+				this.computeData(this.trigonometric_function, this.grad_trigonometric_function, 0.465, data)	
+			}								
 			
 			var layout = {
 			  title: 'Functions',
