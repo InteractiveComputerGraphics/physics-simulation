@@ -1,0 +1,249 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
+	<title>Newton solver</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Newton solver</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1000"> 
+		<tr>
+			<td>
+				<div id="plotOutput" style="width: 1000px; height: 600px;border:2px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+			</td>
+		</tr>
+		<tr>
+			<td><table style="margin:20px">	
+				<col width="200" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label for="newton_steps">Newton steps</label></td>
+					<td><input type="text" id="textInput" value="1" readonly></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><input onchange="document.getElementById('textInput').value=this.value;plot.reset()" id="newton_steps" value="1" type="range"  min="1" max="50" step="1"></td>
+				</tr>
+				<tr>
+					<td><label for="fct">Function</label></td>
+					<td><select onchange="plot.reset()" id="fct" size="1">
+						  <option selected="selected">Quadratic function</option>
+						  <option>Cubic function</option>
+						  <option>Trigonometric function</option>
+						</select>
+					</td>
+				</tr>		 
+			</table></td>
+		</tr>
+
+		<tr><td>
+			<h2>Newton's method</h2>
+			
+			<p>Newton's method is an iterative approach to find the roots of a function. The method requires the function $f(x)$, its derivative $f'(x)$ and an initial guess $x_0$.</p>
+
+			<p>In each iteration the approximation of the solution is improved by:</p>
+			$$\begin{equation*}
+			x_{n+1} = x_{n} - \frac{f(x_n)}{f'(x_n)}
+		   \end{equation*}$$
+		   <p>If the initial guess $x_0$ is close enough to the solution and $f'(x_0) \neq 0$, the method usually converges.</p>
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">	
+	class Plot
+	{
+		constructor()
+		{					
+			this.reset();
+			this.num_newton_steps = 1;
+		}
+		
+		reset()
+		{
+			this.num_newton_steps = parseInt(document.getElementById('newton_steps').value);
+			this.fct = document.getElementById('fct').value;		
+			this.plotFunctions();
+		}
+
+		quadratic_function(x)
+		{
+			return 10*(x*x)+2*x-1;
+		}
+
+		grad_quadratic_function(x, y)
+		{
+			return 20*x+2.0;
+		}
+
+		cubic_function(x)
+		{
+			return 5*(x*x*x)-3*x*x+2*x+1;
+		}
+
+		grad_cubic_function(x, y)
+		{
+			return 15*x*x - 6*x+2.0;
+		}
+		
+		trigonometric_function(x, y)
+		{
+			return 20*Math.sin(2.0*x) + 3*Math.cos(3.0*x);
+		}
+
+		grad_trigonometric_function(x, y)
+		{
+			return 40*Math.cos(2.0*x) - 9.0*Math.sin(3.0*x);
+		}
+
+		newton_step(f, grad_f, x)
+		{
+			return x - f(x) / grad_f(x);
+		}
+		
+		plotFunctions()
+		{	
+			let x = -3;
+			let y = 0.5;
+			let num_steps = 5000;
+			let xValues = [];
+			let yValues_quadratic = [];
+			let yValues_cubic = [];
+			let yValues_trigonometric = [];
+
+			
+			for (let i = 0; i <= num_steps; i++) 
+			{
+				xValues.push(x);
+				yValues_quadratic.push(this.quadratic_function(x));
+				yValues_cubic.push(this.cubic_function(x));
+				yValues_trigonometric.push(this.trigonometric_function(x,y));
+				
+				x += 6 / num_steps;
+				y += 1.0 / num_steps;
+			}
+
+			let current_x = 3.0
+			var data = [];
+			if (this.fct == "Quadratic function")
+			{
+				let x_newton = []
+				let y_newton = []
+				for (let i = 0; i < this.num_newton_steps; i++) 
+				{
+					x_newton.push(current_x)
+					y_newton.push(this.quadratic_function(current_x))
+					current_x = this.newton_step(this.quadratic_function, this.grad_quadratic_function, current_x)
+					x_newton.push(current_x)
+					y_newton.push(0)
+				}
+
+				var trace_quadratic = {
+					x: xValues,
+					y: yValues_quadratic,
+					name: "quadr. fct."
+				  };
+	  
+				  var trace_quadratic_newton = {
+					  x: x_newton,
+					  y: y_newton,
+					  name: "Newton - quadr. fct."
+				  };
+				  data = [trace_quadratic, trace_quadratic_newton];
+			}
+
+			if (this.fct == "Cubic function")
+			{
+				let x_newton = []
+				let y_newton = []
+				for (let i = 0; i < this.num_newton_steps; i++) 
+				{
+					x_newton.push(current_x)
+					y_newton.push(this.cubic_function(current_x))
+					current_x = this.newton_step(this.cubic_function, this.grad_cubic_function, current_x)
+					x_newton.push(current_x)
+					y_newton.push(0)
+				}
+
+				var trace_cubic = {
+					x: xValues,
+					y: yValues_cubic,
+					name: "cubic fct."
+				  };
+	  
+				  var trace_cubic_newton = {
+					  x: x_newton,
+					  y: y_newton,
+					  name: "Newton - cubic fct."
+				  };
+				  data = [trace_cubic, trace_cubic_newton];
+			}
+
+			if (this.fct == "Trigonometric function")
+			{
+				current_x = 0.465
+				let x_newton_trig = []
+				let y_newton_trig = []
+				console.log(this.num_newton_steps)
+				for (let i = 0; i < this.num_newton_steps; i++) 
+				{
+					x_newton_trig.push(current_x)
+					y_newton_trig.push(this.trigonometric_function(current_x))
+					current_x = this.newton_step(this.trigonometric_function, this.grad_trigonometric_function, current_x)
+					x_newton_trig.push(current_x)
+					y_newton_trig.push(0)
+				}
+
+				var trace_trigonometric = {
+					x: xValues,
+					y: yValues_trigonometric,
+					name: "trig. fct."
+				  };
+	  
+				  var trace_trigonometric_newton = {
+					  x: x_newton_trig,
+					  y: y_newton_trig,	
+					  name: "Newton - trig. fct."
+				  };
+				  data = [trace_trigonometric, trace_trigonometric_newton];
+			}		
+						
+			
+			var layout = {
+			  title: 'Functions',
+			  width: 1000,
+			  height: 600
+			};
+			
+			Plotly.newPlot('plotOutput', data, layout);
+		}
+			
+	}
+	
+	plot = new Plot();
+	plot.reset();
+</script>
+
+</body>
+</html>

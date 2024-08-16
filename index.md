@@ -8,6 +8,10 @@ Why JavaScript? Because everybody can directly run the examples in the browser. 
 
 I hope the examples and their documentation help you to learn something about the simulation methods. Feel free to use the examples in your own courses. 
 
+# General 
+
+* [Newton's method](examples/Newton_solver.html)
+
 # Particles
 
 * [A simple particle system](examples/particle_system.html)
