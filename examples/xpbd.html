@@ -325,7 +325,7 @@
 						gradC_x = dx/dl; 
 						gradC_y = dy/dl; 
 						let K = (gradC_x*gradC_x + gradC_y*gradC_y) / this.mass;
-						if (i != 0)
+						if ((this.isActive(index1) && this.isActive(index2)))
 							K = 2*K;
 						K += alpha_tilde;
 						
