@@ -11,6 +11,7 @@ I hope the examples and their documentation help you to learn something about th
 # General 
 
 * [Newton's method](examples/Newton_solver.html)
+* [Heat equation](examples/heat_equation.html)
 
 # Particles
 

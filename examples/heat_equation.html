@@ -1,0 +1,352 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {font-family: Helvetica, sans-serif;}
+		table {background-color:#CCDDEE;text-align:left}
+	</style>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Heat Equation — 2D Diffusion Example</title>
+</head>
+<body>
+<main>
+	<h1 style="text-align:center">Heat Equation — 2D Diffusion Example</h1>
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="1100"> 
+		<col width="400"> 
+		<tr>
+			<td>
+				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+			</td>
+			<td>
+				<table>		
+				<col width="180" style="padding-right:10px"> 
+				<col width="100"> 
+				<tr>
+					<td><label>Current time</label></td>
+					<td><span id="time">0.00</span> s</td>
+				</tr>
+				<tr>
+					<td><label>Time per sim. step</label></td>
+					<td><span id="timePerStep">0.00</span> ms</td>
+				</tr>
+				<tr>
+					<td><label for="timeStepSizeInput">Time step size</label></td>
+					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.005" step="0.001"></td>
+				</tr>
+				<tr>
+					<td><label for="diffusivityInput">Diffusivity constant</label></td>
+					<td><input onchange="gui.sim.diffusivity=parseFloat(value)" id="diffusivityInput" type="number" value="20" step="1"></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
+				</tr>
+				<tr>
+					<td></td>
+					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
+				</tr>
+				</table>
+			</td>
+		</tr>
+		<tr><td>
+			<h2>Heat diffusion example</h2>
+			<p>
+			This example demonstrates a simple explicit finite-difference simulation of the 2D heat equation (diffusion).
+			The simulation stores a temperature field on a lower-resolution grid for performance; the canvas displays the field upscaled.
+			</p>
+
+			<h3>Initial condition</h3>
+			<p>The temperature is initially zero everywhere except a centered hot box (set to 100). You can restart the simulation with the <em>Restart</em> button.</p>
+
+			<h3>Model (continuous)</h3>
+			<p>The heat equation solved is
+			\[ \frac{\partial T}{\partial t} = D \nabla^2 T, \]
+			where \(D\) is the diffusivity.</p>
+
+			<h3>Numerical method</h3>
+			<p>Space is discretized on a uniform Cartesian grid with spacing \(\Delta x\) (we assume \(\Delta x = \Delta y\) here). Let \(T_{i,j}^n\) denote the temperature at grid cell \((i,j)\) at time step \(n\). The continuous PDE is
+\[ \frac{\partial T}{\partial t} = D \nabla^2 T, \]
+which we discretize using a 5-point central difference for the Laplacian and forward-Euler in time (explicit):
+
+\[ \nabla^2 T\big|_{i,j} \approx \frac{T_{i+1,j} + T_{i-1,j} + T_{i,j+1} + T_{i,j-1} - 4T_{i,j}}{\Delta x^2}. \]
+The time-stepping update is then
+\[ T_{i,j}^{n+1} = T_{i,j}^n + \Delta t \; D \; \frac{T_{i+1,j}^n + T_{i-1,j}^n + T_{i,j+1}^n + T_{i,j-1}^n - 4T_{i,j}^n}{\Delta x^2}. \]
+
+			<h3>Note on stability</h3>
+			<p>Because the integrator is explicit, the time step must be small enough to satisfy the CFL-like condition for stability roughly: \(\Delta t \le \frac{\Delta x^2}{4D}\). If you increase \(D\) or \(\Delta t\) you may see the simulation blow up or become noisy.</p>
+
+		</td></tr>
+	</table>	
+	
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Simulation
+	{
+		constructor(resX, resY, scaleFactor)
+		{
+			this.timeStepSize = 0.005;
+			this.time = 0;
+			// scaling factor between simulation resolution and canvas resolution
+			// (simulation runs at lower resolution for performance reasons)
+			this.scale = 1.0/scaleFactor
+
+			this.resX = Math.floor(resX * this.scale);
+			this.resY = Math.floor(resY * this.scale);
+			this.temperature = new Array(this.resX*this.resY).fill(0.0)
+			// diffusivity constant
+			// (higher values lead to faster heat diffusion)
+			this.diffusivity = 20.0;
+
+			this.init()
+		}
+
+		init()
+		{
+				// init temperature field: zero everywhere, non-zero inside a centered box
+				const boxW = 50; // box width in simulation cells
+				const boxH = 50; // box height in simulation cells
+				const cx = Math.floor(this.resX / 2);
+				const cy = Math.floor(this.resY / 2);
+				const x0 = Math.max(0, cx - Math.floor(boxW / 2));
+				const x1 = Math.min(this.resX - 1, cx + Math.floor((boxW - 1) / 2));
+				const y0 = Math.max(0, cy - Math.floor(boxH / 2));
+				const y1 = Math.min(this.resY - 1, cy + Math.floor((boxH - 1) / 2));
+				for (let i = y0; i <= y1; i++) 
+					for (let j = x0; j <= x1; j++) 
+						this.temperature[i * this.resX + j] = 100.0;
+		}
+
+		// simulation step
+		simulationStep()
+		{	
+			let temp = this.temperature.slice();
+			for (let i = 1; i < this.resY-1; i++)
+			{
+				for (let j = 1; j < this.resX-1; j++)
+				{
+					// compute Laplace operator using 5-point stencil
+					let right = temp[i*this.resX+(j+1)];
+					let center = temp[i*this.resX+j];
+					let left = temp[i*this.resX+(j-1)];
+					let up = temp[(i-1)*this.resX+j];
+					let down = temp[(i+1)*this.resX+j];
+
+					const dx = 1.0; // set physical spacing between grid points
+					const invDx2 = 1.0 / (dx * dx);
+					let laplace = (up + down + left + right - 4.0 * center) * invDx2;;
+					this.temperature[i*this.resX+j] += this.diffusivity * laplace * this.timeStepSize;
+					// enforce temperature limits
+					this.temperature[i*this.resX+j] = Math.min(100.0, this.temperature[i*this.resX+j]);
+					this.temperature[i*this.resX+j] = Math.max(0.0, this.temperature[i*this.resX+j]);
+				}
+			}
+			// update simulation time
+			this.time = this.time + this.timeStepSize;
+		}
+	}
+	
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+			
+			this.origin = { x : this.canvas.width / 2, y : this.canvas.height/2};
+			this.scaleFactor = 2;
+			this.mouseButtonDown = false
+			
+			// register mouse event listeners (zoom/selection)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
+		}
+
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{			
+			window.cancelAnimationFrame(this.requestID);
+			delete this.sim;
+			this.sim = new Simulation(this.canvas.width, this.canvas.height, this.scaleFactor);
+
+			this.timeSum = 0.0;
+			this.counter = 0;
+
+			this.sim.timeStepSize = parseFloat(document.getElementById('timeStepSizeInput').value);
+			this.sim.diffusivity = parseFloat(document.getElementById('diffusivityInput').value);
+
+			this.mainLoop();
+		}
+		
+		hsvToRgb(h, s, v)
+		{
+			let i = Math.floor(h * 6);
+			let f = h * 6 - i;
+			let p = v * (1 - s);
+			let q = v * (1 - f * s);
+			let t = v * (1 - (1 - f) * s);
+
+			let 	r = 0;
+			let 	g = 0;
+			let 	b = 0;
+			switch (i % 6)
+			{
+				case 0: r = v, g = t, b = p; break;
+				case 1: r = q, g = v, b = p; break;
+				case 2: r = p, g = v, b = t; break;
+				case 3: r = p, g = q, b = v; break;
+				case 4: r = t, g = p, b = v; break;
+				case 5: r = v, g = p, b = q; break;
+			}
+			return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+		}
+		
+		draw()
+		{
+			this.c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+				
+			let imgData = this.c.getImageData(0, 0, this.canvas.width, this.canvas.height);
+			for(let py = 0; py < this.sim.resY; py++)
+			{
+				for(let px = 0; px < this.sim.resX; px++)
+				{
+					let value = this.sim.temperature[py * this.sim.resX + px]/100.0
+					value = Math.min(0.666, value);
+					value = Math.max(0.0, value);
+					// blue (cold) to red (hot)
+					let color = this.hsvToRgb(0.666 - value, 1.0, 1.0);
+
+					for (let i=0; i < this.scaleFactor; i++)
+						for (let j=0; j < this.scaleFactor; j++)
+						{
+							let ppx = this.scaleFactor*px + i;
+							let ppy = this.scaleFactor*py + j;
+							if (ppx < imgData.width && ppy < imgData.height)
+							{
+								imgData.data[4 * (ppy * imgData.width + ppx)    ] = color[0]; 	 
+								imgData.data[4 * (ppy * imgData.width + ppx) + 1] = color[1]; 
+								imgData.data[4 * (ppy * imgData.width + ppx) + 2] = color[2];
+								imgData.data[4 * (ppy * imgData.width + ppx) + 3] = 255; 
+							}
+						}
+				}
+			}
+			this.c.putImageData(imgData, 0, 0);
+		}
+		
+		mainLoop()
+		{
+			// perform multiple sim steps per render step
+			for (let i=0; i < 8; i++)
+			{
+				let t0 = performance.now();
+				
+				this.sim.simulationStep();
+
+				let t1 = performance.now();
+				this.timeSum += t1 - t0;
+				this.counter += 1;
+					
+				if (this.counter % 50 == 0)				
+				{
+					this.timeSum /= this.counter;
+					document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(2);		
+					this.timeSum = 0.0;
+					this.counter = 0;
+				}	
+				document.getElementById("time").innerHTML = this.sim.time.toFixed(2);	
+			}			
+
+			this.draw();
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));	
+		}
+		
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+		
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1) {
+				this.mouseButtonDown = true;
+				let mousePos = this.getMousePos(this.canvas, event);
+				let x = Math.floor(mousePos.x / this.scaleFactor);
+				let y = Math.floor(mousePos.y / this.scaleFactor);
+				this.lastMouse = { x: x, y: y };
+			}
+		}
+		
+		getMousePos(canvas, event) 
+		{
+			let rect = canvas.getBoundingClientRect();
+			return {
+				x: event.clientX - rect.left,
+				y: event.clientY - rect.top
+			};
+		}
+	
+		mouseMove(event)
+		{
+			let mousePos = this.getMousePos(this.canvas, event); 		
+			if (this.mouseButtonDown)
+			{
+				let x = Math.floor(mousePos.x / this.scaleFactor);
+				let y = Math.floor(mousePos.y / this.scaleFactor);
+				if (!this.lastMouse) this.lastMouse = { x: x, y: y };
+				let lx = this.lastMouse.x;
+				let ly = this.lastMouse.y;
+				let dx = x - lx;
+				let dy = y - ly;
+				let steps = Math.max(Math.abs(dx), Math.abs(dy), 1);
+				for (let s = 0; s <= steps; s++) {
+					let xi = Math.round(lx + dx * s / steps);
+					let yi = Math.round(ly + dy * s / steps);
+					for (let ddy = -1; ddy <= 1; ddy++) {
+						for (let ddx = -1; ddx <= 1; ddx++) {
+							let xj = xi + ddx;
+							let yj = yi + ddy;
+							if (xj > 0 && xj < this.sim.resX-1 && yj > 0 && yj < this.sim.resY-1) 
+								this.sim.temperature[yj * this.sim.resX + xj] = 100.0;
+						}
+					}
+				}
+				this.lastMouse.x = x;
+				this.lastMouse.y = y;
+				//this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));
+			}
+		}
+		
+		mouseUp(event) 
+		{
+			this.mouseButtonDown = false;
+			this.lastMouse = null;
+		} 		
+	}
+	
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>
