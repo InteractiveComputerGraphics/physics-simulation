@@ -172,10 +172,15 @@ The time-stepping update is then
 			this.scaleFactor = 2;
 			this.mouseButtonDown = false
 			
-			// register mouse event listeners (zoom/selection)
+			// register mouse event listeners
 			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
 			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
-			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
+			this.canvas.addEventListener("mouseup",   this.mouseUp.bind(this),   false);
+			// register touch event listeners (mobile / tablet)
+			// passive:false is required so we can call preventDefault() to suppress scrolling
+			this.canvas.addEventListener("touchstart", this.touchStart.bind(this), { passive: false });
+			this.canvas.addEventListener("touchmove",  this.touchMove.bind(this),  { passive: false });
+			this.canvas.addEventListener("touchend",   this.touchEnd.bind(this),   { passive: false });
 		}
 
 		// set simulation parameters from GUI and start mainLoop
@@ -285,6 +290,32 @@ The time-stepping update is then
 				this.mainLoop();
 		}
 		
+		// Convert the first touch point to a plain {clientX, clientY} object
+		// so it can be passed directly to the existing mouse handlers.
+		getTouchClient(event)
+		{
+			const t = event.touches.length > 0 ? event.touches[0] : event.changedTouches[0];
+			return { clientX: t.clientX, clientY: t.clientY };
+		}
+
+		touchStart(event)
+		{
+			event.preventDefault();
+			this.mouseDown({ which: 1, ...this.getTouchClient(event) });
+		}
+
+		touchMove(event)
+		{
+			event.preventDefault();
+			this.mouseMove(this.getTouchClient(event));
+		}
+
+		touchEnd(event)
+		{
+			event.preventDefault();
+			this.mouseUp(event);
+		}
+
 		mouseDown(event)
 		{
 			// left mouse button down
