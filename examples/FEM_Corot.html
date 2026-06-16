@@ -554,6 +554,11 @@
 			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
 			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);	
 			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);		
+			// register touch event listeners (mobile / tablet)
+			// passive:false is required so we can call preventDefault() to suppress scrolling
+			this.canvas.addEventListener("touchstart", this.touchStart.bind(this), { passive: false });
+			this.canvas.addEventListener("touchmove",  this.touchMove.bind(this),  { passive: false });
+			this.canvas.addEventListener("touchend",   this.touchEnd.bind(this),   { passive: false });
 		}
 		
 		// set simulation parameters from GUI and start mainLoop
@@ -783,6 +788,61 @@
 			this.zoom += event.deltaY * -0.05;
 			if (this.zoom < 1) 
 				this.zoom = 1;
+		}
+
+		// Convert the first touch point to a plain {clientX, clientY} object
+		// so it can be passed directly to the existing mouse handlers.
+		getTouchClient(event)
+		{
+			const t = event.touches.length > 0 ? event.touches[0] : event.changedTouches[0];
+			return { clientX: t.clientX, clientY: t.clientY };
+		}
+
+		touchStart(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseDown({ which: 1, ...this.getTouchClient(event) });
+			else if (event.touches.length === 2)
+				this.lastPinchDist = this.getPinchDist(event);
+		}
+
+		touchMove(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+			{
+				this.lastPinchDist = null;
+				this.mouseMove(this.getTouchClient(event));
+			}
+			else if (event.touches.length === 2)
+			{
+				// deselect any dragged particle while pinching
+				this.selectedParticle = -1;
+				const dist = this.getPinchDist(event);
+				if (this.lastPinchDist !== null)
+				{
+					this.zoom += (dist - this.lastPinchDist) * 0.3;
+					if (this.zoom < 1) this.zoom = 1;
+				}
+				this.lastPinchDist = dist;
+			}
+		}
+
+		touchEnd(event)
+		{
+			event.preventDefault();
+			if (event.touches.length < 2)
+				this.lastPinchDist = null;
+			if (event.touches.length === 0)
+				this.mouseUp(event);
+		}
+
+		getPinchDist(event)
+		{
+			const dx = event.touches[0].clientX - event.touches[1].clientX;
+			const dy = event.touches[0].clientY - event.touches[1].clientY;
+			return Math.sqrt(dx*dx + dy*dy);
 		}
 	}
 	

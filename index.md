@@ -10,9 +10,13 @@ I hope the examples and their documentation help you to learn something about th
 
 # General 
 
-* [Newton's method](examples/Newton_solver.html)
-* [Newton's method for minimization](examples/Newton_minimization.html)
 * [Heat equation](examples/heat_equation.html)
+
+# Newton's method 
+
+* [Newton's method](examples/Newton_solver.html)
+* [Newton's method for minimization (1D)](examples/Newton_minimization.html)
+* [Newton's method for minimization (2D)](examples/Newton_minimization_2D.html)
 
 # Particles
 
