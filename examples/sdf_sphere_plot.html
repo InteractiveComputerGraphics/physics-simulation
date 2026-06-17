@@ -279,8 +279,8 @@
 		{
 			let rect = canvas.getBoundingClientRect();
 			return {
-				x: event.clientX - rect.left,
-				y: event.clientY - rect.top
+				x: (event.clientX - rect.left) * canvas.width  / rect.width,
+				y: (event.clientY - rect.top)  * canvas.height / rect.height
 			};
 		}
 	
@@ -342,7 +342,7 @@
 			else if (event.touches.length === 2)
 			{
 				// deselect any dragged particle while pinching
-				this.selectedParticle = -1;
+				this.selected = -1;
 				const dist = this.getPinchDist(event);
 				if (this.lastPinchDist !== null)
 				{
