@@ -8,7 +8,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 /* ── Page & background ────────────────────────────────────────── */
-body {
+html, body {
 	font-family: 'Inter', 'Segoe UI', Helvetica, Arial, sans-serif;
 	background-color: #eef2ff;
 	background-image:
@@ -16,9 +16,12 @@ body {
 		radial-gradient(ellipse 55% 45% at 90% 95%, rgba(233, 240, 254, 0.95) 0%, transparent 55%);
 	min-width: 1024px;
 	min-height: 100vh;
+	width: 100%; 
 	color: #1e293b;
 	padding-bottom: 52px;
 	line-height: 1.65;
+	margin: 0;
+  	padding: 0;
 }
 
 /* ── Page header banner ───────────────────────────────────────── */
