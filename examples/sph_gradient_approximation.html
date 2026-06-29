@@ -2,10 +2,8 @@
 <html class="no-js" lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,56 +16,51 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
 	<title>SPH Gradient Approximation</title>
 </head>
 <body>
-<main>
-	<h1 style="text-align:center">SPH Gradient Approximation</h1>
-	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="400"> 
-		<col width="400" height="400"> 
-		<tr>
-			<td>
-				<div id="plotOutput" style="width: 600px; height: 600px;border:2px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
-			</td>
-			<td>
-				<div id="plotOutput2" style="width: 600px; height: 600px;border:2px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
-			</td>
-		</tr>
-		<tr>
-		<td><table style="margin:20px">	
-			<col width="200" style="padding-right:10px"> 
-			<col width="100"> 
-			<tr>
-				<td><label>Particle radius</label></td>
-				<td><span>0.025</span></td>
-			</tr>
-			<tr>
-				<td><label for="supportRadius">Support radius</label></td>
-				<td><input onchange="plot.reset()" id="supportRadius" value="0.1" type="input"></td>
-			</tr>
-			<tr>
-				<td><label for="randomOffset">Add random offset</label></td>
-				<td><input onchange="plot.reset()" id="randomOffset" type="checkbox"></td>
-			</tr>
-			<tr>
-				<td><label for="kernelGradientCorrection">Use kernel gradient correction</label></td>
-				<td><input onchange="plot.plotFunctions()" id="kernelGradientCorrection" type="checkbox"></td>
-			</tr>
-			<tr>
-				<td><label for="showGradX">x-component of gradient</label></td>
-				<td><input onchange="plot.reset()" id="showGradX" type="checkbox"></td>
-			</tr>
-			<tr>
-				<td><label for="showGradY">y-component of gradient</label></td>
-				<td><input onchange="plot.reset()" id="showGradY" type="checkbox"></td>
-			</tr>
-		</table></td>
-		</tr>
 
-		<tr><td colspan="2">
+<header class="page-header">
+	<h1>SPH Gradient Approximation</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+		<div class="card sim-panel">
+			<div class="sim-canvas-wrap">
+				<div class="plots-grid" width="100%">
+					<div id="plotOutput" style="border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+					<div id="plotOutput2" style="border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+				</div>
+			</div> 
+		</div>
+		<div class="controls-panel" style="width: 100%;align:center;margin-left:auto;margin-right:auto">
+		<h3>Controls</h3>
+		<div class="controls-grid" style="width: 400px;align:left">
+			<label>Particle radius</label>
+			<span>0.025</span>
+			
+			<label for="supportRadius">Support radius</label></td>
+			<input onchange="plot.reset()" id="supportRadius" value="0.1" type="input">
+
+			<label for="randomOffset">Add random offset</label>
+			<input onchange="plot.reset()" id="randomOffset" type="checkbox">
+
+			<label for="kernelGradientCorrection">Use kernel gradient correction</label>
+			<input onchange="plot.plotFunctions()" id="kernelGradientCorrection" type="checkbox">
+
+			<label for="showGradX">x-component of gradient</label>
+			<input onchange="plot.reset()" id="showGradX" type="checkbox">
+
+			<label for="showGradY">y-component of gradient</label>
+			<input onchange="plot.reset()" id="showGradY" type="checkbox">
+		</div>
+	</div>
+
+	<!-- Theory section -->
+	<div class="card theory">
 			<h2>SPH approximation of the gradient of a quadratic function:</h2>
 			In this example we approximate the gradient of a quadratic polynomial using the SPH discretization with the cubic spline kernel [KBST19, KBST22]. The left plot shows the particle sampling pattern while the right plot shows the quadratic function, the exact gradient, the SPH gradient approximation, and the error. To compute the SPH approximation the function values are sampled along the red line in the left plot. That means that for each point on the line the neighbors are determined and the SPH difference formula to approximate the gradient is applied [KBST19]:
 			$$\langle \nabla f(x,y) \rangle = \sum_j \frac{m_j}{\rho_j} (f(x_j,y_j) - f(x,y)) \nabla W_{ij}$$
@@ -93,8 +86,7 @@
 			<li>[KBST22] Dan Koschier, Jan Bender, Barbara Solenthaler, Matthias Teschner. A Survey on SPH Methods in Computer Graphics. Computer Graphics Forum, 2022
 			</li>
 			</ul>
-		</td></tr>
-	</table>	
+	</div>	
 	
 </main>
 
@@ -469,8 +461,8 @@
 			
 			var layout = {
 			  title: 'Particles',
-			  width: 600,
-			  height: 600,
+			  width: 550, 
+			  height: 550,
 			  xaxis: {
 				autorange: [0,2],
 			  },
