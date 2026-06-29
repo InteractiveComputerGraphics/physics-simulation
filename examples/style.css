@@ -14,6 +14,7 @@ body {
 	background-image:
 		radial-gradient(ellipse 70% 40% at 10%  5%,  rgba(219,234,254,0.95) 0%, transparent 55%),
 		radial-gradient(ellipse 55% 45% at 90% 95%, rgba(233, 240, 254, 0.95) 0%, transparent 55%);
+	min-width: 1024px;
 	min-height: 100vh;
 	color: #1e293b;
 	padding-bottom: 52px;
@@ -88,6 +89,7 @@ main,
 /* ── Simulation panel (canvas + controls side by side) ────────── */
 .sim-panel {
 	display: flex;
+	min-width: 500px;
 	gap: 24px;
 	align-items: flex-start;
 	flex-wrap: wrap;

@@ -1,11 +1,10 @@
 <!doctype html>
-<html class="no-js" lang="en">
+<html lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Heat Equation — 2D Diffusion Example</title>
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,80 +17,90 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
-	<title>Heat Equation — 2D Diffusion Example</title>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 </head>
 <body>
+
+<header class="page-header">
+	<h1>Heat Equation — 2D Diffusion Example</h1>
+</header>
+
 <main>
-	<h1 style="text-align:center">Heat Equation — 2D Diffusion Example</h1>
+
+	<!-- Simulation panel: canvas + controls -->
 	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="1100"> 
-		<col width="400"> 
+		<col width="75%"> 
+		<col width="25%"> 
 		<tr>
 			<td>
-				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+				<div class="card sim-panel" style="min-width: 500px;">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="768">Your browser does not support the HTML5 canvas tag.</canvas>
+						<p class="canvas-hint">&#128400; Click and drag on the canvas to draw heat sources.</p>
+					</div>
+				</div>
 			</td>
 			<td>
-				<table>		
-				<col width="180" style="padding-right:10px"> 
-				<col width="100"> 
-				<tr>
-					<td><label>Current time</label></td>
-					<td><span id="time">0.00</span> s</td>
-				</tr>
-				<tr>
-					<td><label>Time per sim. step</label></td>
-					<td><span id="timePerStep">0.00</span> ms</td>
-				</tr>
-				<tr>
-					<td><label for="timeStepSizeInput">Time step size</label></td>
-					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.005" step="0.001"></td>
-				</tr>
-				<tr>
-					<td><label for="diffusivityInput">Diffusivity constant</label></td>
-					<td><input onchange="gui.sim.diffusivity=parseFloat(value)" id="diffusivityInput" type="number" value="20" step="1"></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
-				</tr>
-				</table>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Current time</label>
+						<span class="stat-value"><span id="time">0.00</span> s</span>
+
+						<label>Time per sim. step</label>
+						<span class="stat-value"><span id="timePerStep">0.00</span> ms</span>
+
+						<label for="timeStepSizeInput">Time step &#916;t</label>
+						<input onchange="gui.sim.timeStepSize=parseFloat(value)"
+							id="timeStepSizeInput" type="number" value="0.005" step="0.001">
+
+						<label for="diffusivityInput">Diffusivity constant D</label>
+						<input onchange="gui.sim.diffusivity=parseFloat(value)"
+							id="diffusivityInput" type="number" value="20" step="1">
+
+						<div class="full-width">
+							<button onclick="gui.restart()" id="restart">&#9654; Restart</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.doPause()" id="Pause" class="btn-secondary">&#9646;&#9646; Pause</button>
+						</div>
+					</div>
+				</div>
 			</td>
 		</tr>
-		<tr><td>
-			<h2>Heat diffusion example</h2>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>Heat diffusion example</h2>
 			<p>
 			This example demonstrates a simple explicit finite-difference simulation of the 2D heat equation (diffusion).
-			The simulation stores a temperature field on a lower-resolution grid for performance; the canvas displays the field upscaled.
+			The simulation stores a temperature field on a lower-resolution grid for performance; the canvas displays the field upscaled with a blue (cold) to red (hot) color map.
 			</p>
 
-			<h3>Initial condition</h3>
-			<p>The temperature is initially zero everywhere except a centered hot box (set to 100). You can restart the simulation with the <em>Restart</em> button.</p>
+		<h3>Initial condition</h3>
+		<p>The temperature is initially zero everywhere except a centered hot box (set to 100).
+		Use the <em>Restart</em> button to reset, or draw new heat sources by clicking and dragging.</p>
 
-			<h3>Model (continuous)</h3>
-			<p>The heat equation solved is
-			\[ \frac{\partial T}{\partial t} = D \nabla^2 T, \]
-			where \(D\) is the diffusivity.</p>
+		<h3>Model (continuous)</h3>
+		<p>The heat equation is
+		\[ \frac{\partial T}{\partial t} = D \nabla^2 T, \]
+		where \(T\) is temperature and \(D\) is the diffusivity constant.</p>
 
-			<h3>Numerical method</h3>
-			<p>Space is discretized on a uniform Cartesian grid with spacing \(\Delta x\) (we assume \(\Delta x = \Delta y\) here). Let \(T_{i,j}^n\) denote the temperature at grid cell \((i,j)\) at time step \(n\). The continuous PDE is
+		<h3>Numerical method</h3>
+		<p>Space is discretized on a uniform Cartesian grid with spacing \(\Delta x\) (we assume \(\Delta x = \Delta y\) here). Let \(T_{i,j}^n\) denote the temperature at grid cell \((i,j)\) at time step \(n\). The continuous PDE is
 \[ \frac{\partial T}{\partial t} = D \nabla^2 T, \]
 which we discretize using a 5-point central difference for the Laplacian and forward-Euler in time (explicit):
 
 \[ \nabla^2 T\big|_{i,j} \approx \frac{T_{i+1,j} + T_{i-1,j} + T_{i,j+1} + T_{i,j-1} - 4T_{i,j}}{\Delta x^2}. \]
 The time-stepping update is then
 \[ T_{i,j}^{n+1} = T_{i,j}^n + \Delta t \; D \; \frac{T_{i+1,j}^n + T_{i-1,j}^n + T_{i,j+1}^n + T_{i,j-1}^n - 4T_{i,j}^n}{\Delta x^2}. \]
+		</p>
 
-			<h3>Note on stability</h3>
+		<h3>Note on stability</h3>
 			<p>Because the integrator is explicit, the time step must be small enough to satisfy the CFL-like condition for stability roughly: \(\Delta t \le \frac{\Delta x^2}{4D}\). If you increase \(D\) or \(\Delta t\) you may see the simulation blow up or become noisy.</p>
+	</div>
 
-		</td></tr>
-	</table>	
-	
 </main>
 
 <script id="simulation_code" type="text/javascript">
@@ -330,10 +339,12 @@ The time-stepping update is then
 		
 		getMousePos(canvas, event) 
 		{
-			let rect = canvas.getBoundingClientRect();
+			const rect   = canvas.getBoundingClientRect();
+			const scaleX = canvas.width  / rect.width;   // buffer / displayed size
+			const scaleY = canvas.height / rect.height;
 			return {
-				x: event.clientX - rect.left,
-				y: event.clientY - rect.top
+				x: (event.clientX - rect.left) * scaleX,
+				y: (event.clientY - rect.top)  * scaleY
 			};
 		}
 	
