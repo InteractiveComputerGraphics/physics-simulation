@@ -2,10 +2,8 @@
 <html class="no-js" lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,35 +16,44 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<title>Signed Distance Function - Box</title>
 </head>
 <body>
+
+<header class="page-header">
+	<h1>Signed Distance Function - Box</h1>
+</header>	
+
 <main>
-	<h1 style="text-align:center">Signed Distance Function - Box</h1>
+	<!-- Simulation panel: canvas + controls -->
 	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="1100"> 
-		<col width="400"> 
+		<col width="75%"> 
+		<col width="25%"> 
 		<tr>
 			<td>
-				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="960" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+				</div>
 			</td>
 			<td>
-				<table>		
-				<col width="180" style="padding-right:10px"> 
-				<col width="100"> 
-				<tr>
-					<td><label>Distance</label></td>
-					<td><span id="distance">0</span></td>
-				</tr>
-				<tr>
-					<td><label for="toleranceInput">Tolerance</label></td>
-					<td><input onchange="if (value < 0.0) value = 0.0; gui.sim.tolerance=parseFloat(value); gui.update()" id="toleranceInput" type="number" value="0.0" min="0" step="0.1"></td>
-				</tr>
-				</table>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Distance</label>
+						<span id="distance">0</span>
+					
+						<label for="toleranceInput">Tolerance</label>
+						<input onchange="if (value < 0.0) value = 0.0; gui.sim.tolerance=parseFloat(value); gui.update()" id="toleranceInput" type="number" value="0.0" min="0" step="0.1">
+				</div>
 			</td>
 		</tr>
-		<tr><td>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
 			<h2>Signed distance function of a box:</h2>
 				The signed distance function of a box with width $w$ and height $h$ is defined as:
 				$$\Phi(\mathbf{x}) = \min(\max(d_x,d_y),0.0) + \left \|\begin{pmatrix} \max(d_x,0.0) \\ \max(d_y,0.0) \end{pmatrix} \right \| - \text{tolerance},$$
@@ -72,8 +79,7 @@
 			<h3>Closest point on the surface</h3>
 			The closest point $\mathbf s$ on the surface of the box (yellow) can be determined by starting at the point $\mathbf x$ (red) and going by the signed distance in the direction of the negative normal vector: 
 			$$\mathbf s = \mathbf x - \Phi(\mathbf{x}) \mathbf n.$$
-		</td></tr>
-	</table>	
+	</div>	
 	
 </main>
 
