@@ -2,10 +2,8 @@
 <html class="no-js" lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,45 +16,42 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
 	<title>Newton solver</title>
 </head>
 <body>
-<main>
-	<h1 style="text-align:center">Newton solver</h1>
-	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="1000"> 
-		<tr>
-			<td>
-				<div id="plotOutput" style="width: 1000px; height: 600px;border:2px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
-			</td>
-		</tr>
-		<tr>
-			<td><table style="margin:20px">	
-				<col width="200" style="padding-right:10px"> 
-				<col width="100"> 
-				<tr>
-					<td><label for="newton_steps">Newton steps</label></td>
-					<td><input type="text" id="textInput" value="1" readonly></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><input onchange="document.getElementById('textInput').value=this.value;plot.reset()" id="newton_steps" value="1" type="range"  min="1" max="50" step="1"></td>
-				</tr>
-				<tr>
-					<td><label for="fct">Function</label></td>
-					<td><select onchange="plot.reset()" id="fct" size="1">
-						  <option selected="selected">Quadratic function</option>
-						  <option>Cubic function</option>
-						  <option>Trigonometric function</option>
-						</select>
-					</td>
-				</tr>		 
-			</table></td>
-		</tr>
 
-		<tr><td>
+<header class="page-header">
+	<h1>Newton solver</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<div class="card sim-panel">
+		<div class="sim-canvas-wrap">
+			<div id="plotOutput" style="width: 100%; height: auto;border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+		</div>
+	</div>
+	<div class="controls-panel" style="width: 100%;align:center;margin-left:auto;margin-right:auto">
+		<h3>Controls</h3>
+		<div class="controls-grid" style="width: 400px;align:left">
+			<label for="newton_steps">Newton steps</label>
+			<span class="stat-value"><input type="text" id="textInput" value="1" readonly></span>
+
+			<label></label>
+			<input onchange="document.getElementById('textInput').value=this.value;plot.reset()" id="newton_steps" value="1" type="range"  min="1" max="50" step="1">
+			<label for="fct">Function</label>
+			<select onchange="plot.reset()" id="fct" size="1">
+				<option selected="selected">Quadratic function</option>
+				<option>Cubic function</option>
+				<option>Trigonometric function</option>
+			</select>
+		</div>
+	</div>
+
+	<!-- Theory section -->
+	<div class="card theory">
 			<h2>Newton's method</h2>
 			
 			<p>Newton's method is an iterative approach to find the roots of a function. The method requires the function $f(x)$, its derivative $f'(x)$ and an initial guess $x_0$.</p>
@@ -66,8 +61,7 @@
 			x_{n+1} = x_{n} - \frac{f(x_n)}{f'(x_n)}
 		   \end{equation*}$$
 		   <p>If the initial guess $x_0$ is close enough to the solution and $f'(x_n) \neq 0$, the method usually converges.</p>
-		</td></tr>
-	</table>	
+	</div>	
 	
 </main>
 
@@ -212,8 +206,7 @@
 			
 			var layout = {
 			  title: 'Functions',
-			  width: 1000,
-			  height: 600
+			  autosize: true
 			};
 			
 			Plotly.newPlot('plotOutput', data, layout);
