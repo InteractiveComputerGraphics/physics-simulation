@@ -2,10 +2,8 @@
 <html class="no-js" lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,74 +16,66 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
 	<title>Mass-Spring Model</title>
 </head>
 <body>
+
+<header class="page-header">
+	<h1>Mass-Spring Model</h1>
+</header>
+
 <main>
-	<h1 style="text-align:center">Mass-Spring Model</h1>
-	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="700"> 
-		<col width="400"> 
-		<tr>
-			<td>
-				<canvas id="simCanvas" width="700" height="600" style="border:2px solid #000000;border-radius: 20px;background-color:#FFFFFF">Your browser does not support the HTML5 canvas tag.</canvas>
-			</td>
-			<td>
-				<div id="plotOutput" style="width: 600px; height: 600px;border:2px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
-			</td>
-		</tr>
-		<tr>
-			<td>
-				<table>		
-				<col width="200" style="padding-right:10px"> 
-				<col width="100"> 
-				<tr>
-					<td><label>Current time</label></td>
-					<td><span id="time">0.00</span> s</td>
-				</tr>
-				<tr>
-					<td><label>Time per sim. step</label></td>
-					<td><span id="timePerStep">0.00</span> ms</td>
-				</tr>
-				<tr>
-					<td><label for="timeStepSizeInput">Time step size</label></td>
-					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.005" step="0.001"></td>
-				</tr>
-				<tr>
-					<td><label for="initialLengthInput">Initial length</label></td>
-					<td><input onchange="gui.restart()" id="initialLengthInput" type="number" value="2.0" step="0.1"></td>
-				</tr>
-				<tr>
-					<td><label for="stiffnessInput">Stiffness</label></td>
-					<td><input onchange="gui.restart()" id="stiffnessInput" type="number" value="5.0" step="1.0"></td>
-				</tr>
-				<tr>
-					<td><label for="massInput">Mass</label></td>
-					<td><input onchange="gui.restart()" id="massInput" type="number" value="0.5" step="0.01"></td>
-				</tr>
-				<tr>
-					<td><label for="timeIntegrationInput">Time integration method</label></td>
-					<td><select onchange="gui.sim.timeIntegrationMethod=value" id="timeIntegrationInput"> 
-						<option>Explicit Euler</option> 
-						<option selected="selected">Symplectic Euler</option> 
-						<option>Runge-Kutta 2</option> 
-						<option>Implicit Euler</option>
-					</select> 
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
-				</tr>
-				</table>
-			</td>
-		</tr>
-		<tr><td>
+	<!-- Simulation panel: canvas + controls -->
+	<div class="card sim-panel">
+		<div class="sim-canvas-wrap">
+			<div class="plots-grid" width="100%">
+				<canvas id="simCanvas" width="600" height="600" style="border:0px solid #000000;border-radius: 20px;background-color:#FFFFFF">Your browser does not support the HTML5 canvas tag.</canvas>
+				<div id="plotOutput" style="width: 600px; height: 600px;border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+			</div>
+		</div> 
+	</div>
+	<div class="controls-panel" style="width: 100%;align:center;margin-left:auto;margin-right:auto">
+		<h3>Controls</h3>
+		<div class="controls-grid" style="width: 400px;align:left">
+			<label>Current time</label>
+			<span class="stat-value"><span id="time">0.00</span> s</span>
+
+			<label>Time per sim. step</label></td>
+			<span class="stat-value"><span id="timePerStep">0.00</span> ms</span>
+			
+			<label for="timeStepSizeInput">Time step size</label>
+			<input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.005" step="0.001">
+
+			<label for="initialLengthInput">Initial length</label>
+			<input onchange="gui.restart()" id="initialLengthInput" type="number" value="2.0" step="0.1">
+
+			<label for="stiffnessInput">Stiffness</label>
+			<input onchange="gui.restart()" id="stiffnessInput" type="number" value="5.0" step="1.0">
+
+			<label for="massInput">Mass</label>
+			<input onchange="gui.restart()" id="massInput" type="number" value="0.5" step="0.01">
+
+			<label for="timeIntegrationInput">Time integration method</label>
+			<select onchange="gui.sim.timeIntegrationMethod=value" id="timeIntegrationInput"> 
+				<option>Explicit Euler</option> 
+				<option selected="selected">Symplectic Euler</option> 
+				<option>Runge-Kutta 2</option> 
+				<option>Implicit Euler</option>
+			</select> 
+
+			<div class="full-width">
+				<button onclick="gui.restart()" id="restart">&#9654; Restart</button>
+			</div>
+			<div class="full-width">
+				<button onclick="gui.doPause()" id="Pause" class="btn-secondary">&#9646;&#9646; Pause</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Theory section -->
+	<div class="card theory">
 			<h2>Mass spring algorithm:</h2>
 				This 1D example shows the motion of a mass spring system that consists of a static and a dynamic particle linked by a spring. In each simulation step the following steps are performed:
 				<ol>
@@ -165,9 +155,7 @@
 				\end{align*}
 				$$
 			
-			
-		</td></tr>
-	</table>	
+	</div>	
 	
 </main>
 
