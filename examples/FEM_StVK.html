@@ -2,10 +2,8 @@
 <html class="no-js" lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,99 +16,95 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<title>Finite Element Method (FEM) - St. Venant-Kirchhoff Model</title>
 </head>
 <body>
+
+<header class="page-header">
+	<h1>Finite Element Method (FEM) - St. Venant-Kirchhoff Model</h1>
+</header>	
+
 <main>
-	<h1 style="text-align:center">Finite Element Method (FEM) - St. Venant-Kirchhoff Model</h1>
+	<!-- Simulation panel: canvas + controls -->
 	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="1100"> 
-		<col width="400"> 
+		<col width="75%"> 
+		<col width="25%"> 
 		<tr>
 			<td>
-				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1100" height="1125" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+				</div>
 			</td>
 			<td>
-				<table>		
-				<col width="180" style="padding-right:10px"> 
-				<col width="100"> 
-				<tr>
-					<td><label>Current time</label></td>
-					<td><span id="time">0.00</span> s</td>
-				</tr>
-				<tr>
-					<td><label>Time per sim. step</label></td>
-					<td><span id="timePerStep">0.00</span> ms</td>
-				</tr>
-				<tr>
-					<td><label># particles</label></td>
-					<td><span id="numParticles">0</span></td>
-				</tr>
-				<tr>
-					<td><label># elements</label></td>
-					<td><span id="numElements">0</span></td>
-				</tr>
-				<tr>
-					<td><label for="widthInput">Width</label></td>
-					<td><input onchange="gui.restart()" id="widthInput" type="number" value="40" step="1"></td>
-				</tr>
-				<tr>
-					<td><label for="heightInput">Height</label></td>
-					<td><input onchange="gui.restart()" id="heightInput" type="number" value="30" step="1"></td>
-				</tr>
-				<tr>
-					<td><label for="fixedParticlesInput"># fixed particles</label></td>
-					<td><select onchange="gui.restart()" id="fixedParticlesInput">
-					  <option value="1">1</option>
-					  <option value="2" selected="selected">2</option>
-					  <option value="4">4</option>
-					</select></td>
-				</tr>
-				<tr>
-					<td><label for="timeStepSizeInput">Time step size</label></td>
-					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.001" step="0.001"></td>
-				</tr>
-				<tr>
-					<td><label for="youngsModulusInput">Young's modulus</label></td>
-					<td><input onchange="gui.sim.youngsModulus=parseFloat(value); gui.sim.updateLameParameters()" id="youngsModulusInput" type="number" value="500000.0" step="1.0"></td>
-				</tr>
-				<tr>
-					<td><label for="poissonRatioInput">Poisson ratio</label></td>
-					<td><input onchange="gui.sim.poissonRatio=parseFloat(value); gui.sim.updateLameParameters()" id="poissonRatioInput" type="number" value="0.3" step="0.1"></td>
-				</tr>
-				<tr>
-					<td><label for="dampingInput">Simple damping</label></td>
-					<td><input onchange="gui.sim.damping=parseFloat(value)" id="dampingInput" type="number" value="0.001" step="0.001"></td>
-				</tr>
-				<tr>
-					<td><label for="gravityInput">Gravity</label></td>
-					<td><input onchange="gui.sim.gravity=parseFloat(value)" id="gravityInput" type="number" value="-9.81" step="0.01"></td>
-				</tr>
-				<tr>
-					<td><label for="densityInput">Density</label></td>
-					<td><input onchange="gui.sim.density=parseFloat(value)" id="densityInput" type="number" value="500.0" step="1.0"></td>
-				</tr>
-				<tr>
-					<td><label for="renderStress">Visualize stress</label></td>
-					<td><input onchange="gui.renderStress=this.checked" id="renderStress" type="checkbox"></td>
-				</tr>
-				<tr>
-					<td><label for="maxStressInput">Max. stress value</label></td>
-					<td><input onchange="gui.maxStress=parseFloat(value)" id="maxStressInput" type="number" value="1000000.0" step="1.0"></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
-				</tr>
-				</table>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Current time</label>
+						<span class="stat-value"><span id="time">0.00</span> s</span>
+
+						<label>Time per sim. step</label>
+						<span class="stat-value"><span id="timePerStep">0.00</span> ms</span>
+						
+						<label># particles</label>
+						<span class="stat-value"><span id="numParticles">0</span></span>
+
+						<label># elements</label>
+						<span class="stat-value"><span id="numElements">0</span></span>
+
+						<label for="widthInput">Width</label>
+						<input onchange="gui.restart()" id="widthInput" type="number" value="40" step="1">
+
+						<label for="heightInput">Height</label>
+						<input onchange="gui.restart()" id="heightInput" type="number" value="30" step="1">
+
+						<label for="fixedParticlesInput"># fixed particles</label>
+						<select onchange="gui.restart()" id="fixedParticlesInput">
+					  		<option value="1">1</option>
+					  		<option value="2" selected="selected">2</option>
+					  		<option value="4">4</option>
+						</select>
+						
+						<label for="timeStepSizeInput">Time step size</label>
+						<input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.001" step="0.001">
+						
+						<label for="youngsModulusInput">Young's modulus</label>
+						<input onchange="gui.sim.youngsModulus=parseFloat(value); gui.sim.updateLameParameters()" id="youngsModulusInput" type="number" value="500000.0" step="1.0">
+
+						<label for="poissonRatioInput">Poisson ratio</label>
+						<input onchange="gui.sim.poissonRatio=parseFloat(value); gui.sim.updateLameParameters()" id="poissonRatioInput" type="number" value="0.3" step="0.1">
+
+						<label for="dampingInput">Simple damping</label>
+						<input onchange="gui.sim.damping=parseFloat(value)" id="dampingInput" type="number" value="0.001" step="0.001">
+			
+						<label for="gravityInput">Gravity</label>
+						<input onchange="gui.sim.gravity=parseFloat(value)" id="gravityInput" type="number" value="-9.81" step="0.01">
+			
+						<label for="densityInput">Density</label>
+						<input onchange="gui.sim.density=parseFloat(value)" id="densityInput" type="number" value="500.0" step="1.0">
+
+						<label for="renderStress">Visualize stress</label>
+						<input onchange="gui.renderStress=this.checked" id="renderStress" type="checkbox">
+	
+						<label for="maxStressInput">Max. stress value</label>
+						<input onchange="gui.maxStress=parseFloat(value)" id="maxStressInput" type="number" value="1000000.0" step="1.0">
+						
+						<div class="full-width">
+							<button onclick="gui.restart()" id="restart">&#9654; Restart</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.doPause()" id="Pause" class="btn-secondary">&#9646;&#9646; Pause</button>
+						</div>
+					</div>
+				</div>
 			</td>
 		</tr>
-		<tr><td>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
 			<h2>FEM algorithm:</h2>
 				This example shows a finite element simulation using the St. Venant-Kirchhoff model with triangular elements [SB12]:
 				<ol>
@@ -162,7 +156,7 @@
 				\end{align*}$$
 				where $A$ is the area of the triangular element in rest configuration and $\mathbf D_m^{-T}$ is the inverted and transposed the reference shape matrix. 
 			
-			<h3>2. Time integration</h3>
+			<h3>5. Time integration</h3>
 				Finally, the particles are advected by numerical time integration. In our case we use a symplectic Euler method:
 				$$\begin{align*}
 					\mathbf v(t + \Delta t) &= \mathbf v(t) + \frac{\Delta t}{m} \left (\mathbf f(t) + \mathbf f^{\text{ext}}(t) \right ) \\
@@ -175,8 +169,7 @@
 				<li>[SB12] Eftychios Sifakis, Jernej Barbic. FEM Simulation of 3D Deformable Solids. ACM SIGGRAPH Courses, 2012</li>
 			</ul>
 			
-		</td></tr>
-	</table>	
+	</div>		
 	
 </main>
 
@@ -722,10 +715,12 @@
 		
 		getMousePos(canvas, event) 
 		{
-			let rect = canvas.getBoundingClientRect();
+			const rect   = canvas.getBoundingClientRect();
+			const scaleX = canvas.width  / rect.width;   // buffer / displayed size
+			const scaleY = canvas.height / rect.height;
 			return {
-				x: event.clientX - rect.left,
-				y: event.clientY - rect.top
+				x: (event.clientX - rect.left) * scaleX,
+				y: (event.clientY - rect.top)  * scaleY
 			};
 		}
 	
