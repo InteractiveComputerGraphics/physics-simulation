@@ -2,177 +2,155 @@
 <html lang="en">
 <head>
 	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<title>Newton's Method — The Saddle Point Problem</title>
-	<script>MathJax = { tex: { inlineMath: [['$','$'],['\\(','\\)']] } };</script>
-	<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
-	<style>
-		body {
-			font-family: Helvetica, sans-serif;
-			max-width: 1060px;
-			margin: auto;
-			padding: 20px;
-		}
-		h1 { text-align: center; }
-		.card {
-			background: #CCDDEE;
-			border-radius: 16px;
-			padding: 20px;
-			margin: 16px 0;
-		}
-		.controls {
-			display: flex;
-			flex-wrap: wrap;
-			gap: 14px;
-			align-items: center;
-			margin-top: 10px;
-		}
-		.ctrl { display: flex; align-items: center; gap: 6px; }
-		button {
-			padding: 3px 12px;
-			font-size: 1em;
-			cursor: pointer;
-			border-radius: 5px;
-			border: 1px solid #999;
-			background: #fff;
-		}
-		button:hover { background: #e0e8f0; }
-		input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
-		input[type="range"] { vertical-align: middle; }
-		label { cursor: pointer; }
-		#statusText {
-			margin-top: 8px;
-			padding: 7px 14px;
-			border-radius: 8px;
-			font-size: 0.93em;
-			min-height: 1.6em;
-			background: #e0e8f0;
-			border: 1px solid #b0c0d0;
-		}
-		h3 { margin-top: 1.2em; }
-	</style>
 </head>
 <body>
 
+<header class="page-header">
 <h1>Newton's Method — The Saddle Point Problem</h1>
+</header>
 
-<div class="card">
-	<div id="plot3d" style="width:100%;height:620px;border:2px solid #444;border-radius:4px;"></div>
-	<div id="statusText">Loading…</div>
-	<div class="controls">
-		<div class="ctrl">
-			Steps:
-			<button onclick="sim.changeSteps(-1)">&#8722;</button>
-			<input type="text" id="stepsInput" value="5" readonly
-			       style="width:36px;text-align:center;font-size:1em;">
-			<button onclick="sim.changeSteps(+1)">&#43;</button>
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<div class="card sim-panel">
+		<div class="sim-canvas-wrap">
+			<div id="plot3d" style="width:100%;height:620px;border:2px solid #444;border-radius:4px;"></div>
+			<div id="statusText">Loading…</div>
 		</div>
-		<div class="ctrl">
-			x&#x2080;&thinsp;=&thinsp;<span id="x0Display"
-			  style="font-family:monospace;background:#fff;padding:2px 9px;border-radius:6px;border:1px solid #bbb;"></span>
-		</div>
-		<div class="ctrl">
+	</div>
+	<div class="controls-panel" style="width: 100%;align:center;margin-left:auto;margin-right:auto">
+		<h3>Controls</h3>
+		<div class="controls-grid" style="width: 500px;align:left">
+			<label>Newton steps</label>
+			<p style="display:flex;align-items:center;gap:6px">
+				<button onclick="plot.changeSteps(-1)" type="button">&#8722;</button>
+				<input type="text" id="textInput" value="1" readonly style="width:36px;text-align:center">
+				<button onclick="plot.changeSteps(+1)" type="button">&#43;</button>
+			</p>
+			<label>x&#x2080;&thinsp;=&thinsp;</label>
+			<span id="x0Display"		  style="font-family:monospace;background:#fff;padding:2px 9px;border-radius:6px;border:1px solid #bbb;"></span>
+			
 			Presets:
 			<button onclick="sim.setPreset('saddle')"
 			        title="Starts near the non-convex strip — converges to the saddle with standard Newton">
 				&#9656; Saddle start&nbsp;(0.10,&thinsp;1.00)
 			</button>
+			<label></label>
+			
 			<button onclick="sim.setPreset('min')"
 			        title="Starts in the convex basin — converges to a minimum with both methods">
 				&#9656; Minimum start&nbsp;(1.50,&thinsp;0.50)
 			</button>
-		</div>
-		<div class="ctrl">
-			<input type="checkbox" id="showNonConvex" onchange="sim.update()">
+			
 			<label for="showNonConvex">Show non-convex regions</label>
-		</div>
-		<div class="ctrl">
+			<input type="checkbox" id="showNonConvex" onchange="sim.update()">
+
+			<label for="useProjected">Projected Newton</label>
+		
 			<input type="checkbox" id="useProjected" onchange="sim.update()">
-			<label for="useProjected">Projected Newton&nbsp;&nbsp;&epsilon;&thinsp;=</label>
-			<input type="range" id="epsSlider" min="0.1" max="4.0" step="0.1" value="2.0"
+			
+			<label for="useProjected">&epsilon;&thinsp;=</label>
+			<p><input type="range" id="epsSlider" min="0.1" max="4.0" step="0.1" value="2.0"
 			       oninput="document.getElementById('epsVal').textContent=
 			                parseFloat(this.value).toFixed(1); sim.update();">
-			<span id="epsVal" style="font-family:monospace;min-width:34px;">2.0</span>
+				<span id="epsVal" style="font-family:monospace;min-width:34px;">2.0</span>
+			</p>
 		</div>
+		<p style="margin:8px 0 0 4px;color:#555;font-size:0.87em;">
+			Click anywhere on the surface to place the starting point x&#x2080;.
+		</p>
 	</div>
-	<p style="margin:8px 0 0 4px;color:#555;font-size:0.87em;">
-		Click anywhere on the surface to place the starting point x&#x2080;.
-	</p>
-</div>
 
-<!-- ===================== THEORY ===================== -->
-<div class="card">
-	<h2>Background</h2>
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>Background</h2>
 
-	<h3>The double-well function</h3>
-	<p>
-		$$f(x_1, x_2) = (x_1^2 - 1)^2 + \tfrac{1}{2}x_2^2$$
-	</p>
-	<p>
-		This function has two global minima at $\mathbf{x}^* = (\pm 1,\,0)$ with $f = 0$,
-		and a <strong>saddle point</strong> at the origin $(0,0)$ with $f = 1$.
-		It serves as a minimal, transparent example where pure Newton's method does not converge to a minimum.
-	</p>
+		<h3>The double-well function</h3>
+		<p>
+			$$f(x_1, x_2) = (x_1^2 - 1)^2 + \frac{1}{2}x_2^2$$
+		</p>
+		<p>
+			This function has two global minima at $\mathbf{x}^* = (\pm 1,\,0)$ with $f = 0$,
+			and a <strong>saddle point</strong> at the origin $(0,0)$ with $f = 1$.
+			It serves as a minimal, transparent example where pure Newton's method does not converge to a minimum.
+		</p>
 
-	<h3>Gradient and Hessian</h3>
-	<p>
-		$$\nabla f = \begin{pmatrix}4x_1(x_1^2-1)\\x_2\end{pmatrix},
-		\qquad
-		\mathbf{H}(x_1,x_2) = \begin{pmatrix}12x_1^2-4 & 0\\0 & 1\end{pmatrix}$$
-	</p>
-	<p>
-		At the saddle: $\mathbf{H}(0,0) = \operatorname{diag}(-4,\;1)$.
-		One eigenvalue is negative — the Hessian is <em>indefinite</em>.
-		The quadratic Taylor model $q(\mathbf{x}) = f + \nabla f^\top \delta + \tfrac{1}{2}\delta^\top\mathbf{H}\delta$
-		is then <em>unbounded below</em>: it has no global minimizer.
-	</p>
+		<h3>Gradient and Hessian</h3>
+		<p>
+			$$\nabla f = \begin{pmatrix}4x_1(x_1^2-1)\\x_2\end{pmatrix},
+			\qquad
+			\mathbf{H}(x_1,x_2) = \begin{pmatrix}12x_1^2-4 & 0\\0 & 1\end{pmatrix}$$
+		</p>
+		<p>
+			At the saddle: $\mathbf{H}(0,0) = \text{diag}(-4,\;1)$.
+			One eigenvalue is negative — the Hessian is <em>indefinite</em>.
+			The quadratic Taylor model $q(\mathbf{x}) = f + \nabla f^\top \delta + \frac{1}{2}\delta^\top\mathbf{H}\delta$
+			is then <em>unbounded below</em>: it has no global minimizer.
+		</p>
 
-	<h3>Non-convex regions (checkbox 1)</h3>
-	<p>
-		The smaller Hessian eigenvalue $12x_1^2 - 4$ is negative wherever
-		$$|x_1| < \frac{1}{\sqrt{3}} \approx 0.577.$$
-		Inside this vertical strip the function is locally non-convex.
-		Enable the first checkbox to highlight the non-convex part of the surface in orange.
-	</p>
+		<h3>Non-convex regions (checkbox 1)</h3>
+		<p>
+			The smaller Hessian eigenvalue $12x_1^2 - 4$ is negative wherever
+			$$|x_1| < \frac{1}{\sqrt{3}} \approx 0.577.$$
+			Inside this vertical strip the function is locally non-convex.
+			Enable the first checkbox to highlight the non-convex part of the surface in orange.
+		</p>
 
-	<h3>Why Newton converges to the saddle</h3>
-	<p>
-		Newton's update $\mathbf{x}_{n+1} = \mathbf{x}_n - \mathbf{H}^{-1}\nabla f$
-		minimizes the local quadratic model.
-		When the Hessian is indefinite, the "minimizer" of that unbounded model
-		can be a saddle point of $f$.
-		Starting near $(0.10,\;1.00)$: the Hessian at that point is
-		$\mathbf{H} \approx \operatorname{diag}(-3.88,\;1)$, and the Newton step
-		lands almost exactly on the saddle $(0,0)$ in one iteration.
-		Once there, $\nabla f = \mathbf{0}$ and the method stalls — at a point that
-		is <em>not</em> a local minimum.
-	</p>
+		<h3>Why Newton converges to the saddle</h3>
+		<p>
+			Newton's update $\mathbf{x}_{n+1} = \mathbf{x}_n - \mathbf{H}^{-1}\nabla f$
+			minimizes the local quadratic model.
+			When the Hessian is indefinite, the "minimizer" of that unbounded model
+			can be a saddle point of $f$.
+			Starting near $(0.10,\;1.00)$: the Hessian at that point is
+			$\mathbf{H} \approx \text{diag}(-3.88,\;1)$, and the Newton step
+			lands almost exactly on the saddle $(0,0)$ in one iteration.
+			Once there, $\nabla f = \mathbf{0}$ and the method stalls — at a point that
+			is <em>not</em> a local minimum.
+		</p>
 
-	<h3>Projected Newton — eigenvalue clamping (checkbox 2)</h3>
-	<p>
-		One standard remedy is to replace $\mathbf{H}$ by a positive-definite surrogate
-		$\mathbf{H}_\varepsilon$ obtained by clamping all eigenvalues from below:
-		$$\mathbf{H}_\varepsilon
-		  = \mathbf{V}\,\operatorname{diag}\!\bigl(\max(\lambda_1,\varepsilon),\;
-		    \max(\lambda_2,\varepsilon)\bigr)\,\mathbf{V}^\top, \qquad \varepsilon > 0,$$
-		where $\mathbf{H} = \mathbf{V}\boldsymbol{\Lambda}\mathbf{V}^\top$ is the
-		eigendecomposition. Because $\mathbf{H}_\varepsilon \succ 0$, the modified step
-		$\mathbf{x}_{n+1} = \mathbf{x}_n - \mathbf{H}_\varepsilon^{-1}\nabla f$
-		is always a descent direction ($\nabla f^\top \mathbf{H}_\varepsilon^{-1} \nabla f > 0$).
-		A <strong>backtracking line search</strong> (Armijo condition) is applied to control
-		the step length and guarantee a sufficient decrease in $f$.
-	</p>
-	<p>
-		Use the slider to vary $\varepsilon$ and observe the trade-off:
-		large $\varepsilon$ strongly deflects the step away from the saddle but slows convergence
-		(it resembles gradient descent when $\varepsilon \gg \|\mathbf{H}\|$);
-		small $\varepsilon$ keeps close to the original Newton step and converges faster
-		once the iterates leave the non-convex region.
-	</p>
-	<p>
-		In practice, eigenvalue clamping is combined with a line search or trust-region strategy.
-	</p>
-</div>
+		<h3>Projected Newton — eigenvalue clamping (checkbox 2)</h3>
+		<p>
+			One standard remedy is to replace $\mathbf{H}$ by a positive-definite surrogate
+			$\mathbf{H}_\varepsilon$ obtained by clamping all eigenvalues from below:
+			$$\mathbf{H}_\varepsilon
+			= \mathbf{V}\,\text{diag}\!\bigl(\max(\lambda_1,\varepsilon),\;
+				\max(\lambda_2,\varepsilon)\bigr)\,\mathbf{V}^\top, \qquad \varepsilon > 0,$$
+			where $\mathbf{H} = \mathbf{V}\boldsymbol{\Lambda}\mathbf{V}^\top$ is the
+			eigendecomposition. Because $\mathbf{H}_\varepsilon \succ 0$, the modified step
+			$\mathbf{x}_{n+1} = \mathbf{x}_n - \mathbf{H}_\varepsilon^{-1}\nabla f$
+			is always a descent direction ($\nabla f^\top \mathbf{H}_\varepsilon^{-1} \nabla f > 0$).
+			A <strong>backtracking line search</strong> (Armijo condition) is applied to control
+			the step length and guarantee a sufficient decrease in $f$.
+		</p>
+		<p>
+			Use the slider to vary $\varepsilon$ and observe the trade-off:
+			large $\varepsilon$ strongly deflects the step away from the saddle but slows convergence
+			(it resembles gradient descent when $\varepsilon \gg \|\mathbf{H}\|$);
+			small $\varepsilon$ keeps close to the original Newton step and converges faster
+			once the iterates leave the non-convex region.
+		</p>
+		<p>
+			In practice, eigenvalue clamping is combined with a line search or trust-region strategy.
+		</p>
+	</div>
+</main>
 
 <!-- ===================== SCRIPT ===================== -->
 <script>

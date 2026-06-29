@@ -2,10 +2,8 @@
 <html class="no-js" lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,50 +16,48 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
 	<title>Newton's method for 2D minimization</title>
 </head>
 <body>
-<main>
-	<h1 style="text-align:center">Newton's method for 2D minimization</h1>
-	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="1000">
-		<tr>
-			<td>
-				<div id="plotOutput" style="width: 1000px; height: 700px;border:2px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
-				<p style="margin:6px 0 0 4px;color:#555;font-size:0.9em">Click anywhere on the plot to set the starting point x&#x2080;.</p>
-			</td>
-		</tr>
-		<tr>
-			<td><table style="margin:20px">	
-				<col width="200" style="padding-right:10px"> 
-				<col width="100"> 
-				<tr>
-					<td><label>Newton steps</label></td>
-					<td style="display:flex;align-items:center;gap:6px">
-						<button onclick="plot.changeSteps(-1)" type="button">&#8722;</button>
-						<input type="text" id="textInput" value="1" readonly style="width:36px;text-align:center">
-						<button onclick="plot.changeSteps(+1)" type="button">&#43;</button>
-					</td>
-				</tr>
-				<tr>
-					<td><label>Starting point x&#x2080;</label></td>
-					<td><span id="x0Display" style="font-family:monospace"></span></td>
-				</tr>
-				<tr>
-					<td><label for="fct">Function</label></td>
-					<td><select onchange="plot.reset()" id="fct" size="1">
-						  <option selected="selected">Elliptic quadratic</option>
-						  <option>Rosenbrock function</option>
-						  <option>Himmelblau function</option>
-						</select>
-					</td>
-				</tr>		 
-			</table></td>
-		</tr>
 
-		<tr><td>
+<header class="page-header">
+	<h1>Newton's method for 2D minimization</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<div class="card sim-panel">
+		<div class="sim-canvas-wrap">
+			<div id="plotOutput" style="border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+				<p style="margin:6px 0 0 4px;color:#555;font-size:0.9em">Click anywhere on the plot to set the starting point x&#x2080;.</p>
+			</div>
+	</div>
+	<div class="controls-panel" style="width: 100%;align:center;margin-left:auto;margin-right:auto">
+		<h3>Controls</h3>
+		<div class="controls-grid" style="width: 400px;align:left">
+			<label>Newton steps</label>
+			<p style="display:flex;align-items:center;gap:6px">
+				<button onclick="plot.changeSteps(-1)" type="button">&#8722;</button>
+				<input type="text" id="textInput" value="1" readonly style="width:36px;text-align:center">
+				<button onclick="plot.changeSteps(+1)" type="button">&#43;</button>
+			</p>
+			
+			<label>Starting point x&#x2080;</label>
+			<span id="x0Display" style="font-family:monospace"></span>
+			
+			<label for="fct">Function</label>
+			<select onchange="plot.reset()" id="fct" size="1">
+				<option selected="selected">Elliptic quadratic</option>
+				<option>Rosenbrock function</option>
+				<option>Himmelblau function</option>
+			</select>
+		</div>
+	</div>
+
+	<!-- Theory section -->
+	<div class="card theory">
 			<h2>Newton's method for 2D minimization</h2>
 
 			<p>In two dimensions, Newton's method minimizes $f(\mathbf{x})$, $\mathbf{x} = (x_1, x_2)^\top$, by
@@ -94,8 +90,7 @@
 			the Hessian is indefinite and the step may point away from any minimum.
 			$$f(x_1, x_2) = (x_1^2 + x_2 - 11)^2 + (x_1 + x_2^2 - 7)^2$$
 			$$\mathbf{x}^* \in \{(3,2),\;(-2.805,\,3.131),\;(-3.779,\,-3.283),\;(3.584,\,-1.848)\}$$</p>
-		</td></tr>
-	</table>	
+	</div>	
 	
 </main>
 
@@ -385,8 +380,8 @@
 			const data = [];
 			const layout = {
 				title: "Newton's method — 2D minimization",
-				width: 1000,
-				height: 700,
+				autosize: true,
+				height: 600,
 				margin: { l: 50, r: 10, t: 50, b: 50 },
 				xaxis: { title: 'x₁' },
 				yaxis: { title: 'x₂', scaleanchor: 'x', scaleratio: 1 },
@@ -401,23 +396,23 @@
 
 			if (this.fct === 'Elliptic quadratic')
 			{
-				layout.xaxis.range = [-3, 3];
-				layout.yaxis.range = [-3, 3];
-				this.computeData(ellipticQuadratic, this.x0, [-4, 4], [-3, 3], data);
+				layout.xaxis.range = [-6, 6];
+				layout.yaxis.range = [-4, 4];
+				this.computeData(ellipticQuadratic, this.x0, [-6, 6], [-4, 4], data);
 				this.addMinima([[1.0, 0.5]], data);
 			}
 			else if (this.fct === 'Rosenbrock function')
 			{
-				layout.xaxis.range = [-3, 3];
-				layout.yaxis.range = [-3, 3];
-				this.computeData(rosenbrock, this.x0, [-4, 4], [-3, 3], data);
+				layout.xaxis.range = [-6, 6];
+				layout.yaxis.range = [-4, 4];
+				this.computeData(rosenbrock, this.x0, [-6, 6], [-4, 4], data);
 				this.addMinima([[1.0, 1.0]], data);
 			}
 			else if (this.fct === 'Himmelblau function')
 			{
-				layout.xaxis.range = [-3, 3];
-				layout.yaxis.range = [-3, 3];
-				this.computeData(himmelblau, this.x0, [-4, 4], [-3, 3], data);
+				layout.xaxis.range = [-6, 6];
+				layout.yaxis.range = [-4, 4];
+				this.computeData(himmelblau, this.x0, [-6, 6], [-4, 4], data);
 				// four minima; only (3, 2) lies inside [-3,3]×[-3,3]
 				this.addMinima([[3.0, 2.0], [-2.805, 3.131], [-3.779, -3.283], [3.584, -1.848]], data);
 			}
