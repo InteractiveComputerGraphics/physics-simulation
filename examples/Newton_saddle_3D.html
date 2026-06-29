@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>Newton's Method — The Saddle Point Problem</title>
+	<script>MathJax = { tex: { inlineMath: [['$','$'],['\\(','\\)']] } };</script>
+	<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+	<script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+	<style>
+		body {
+			font-family: Helvetica, sans-serif;
+			max-width: 1060px;
+			margin: auto;
+			padding: 20px;
+		}
+		h1 { text-align: center; }
+		.card {
+			background: #CCDDEE;
+			border-radius: 16px;
+			padding: 20px;
+			margin: 16px 0;
+		}
+		.controls {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 14px;
+			align-items: center;
+			margin-top: 10px;
+		}
+		.ctrl { display: flex; align-items: center; gap: 6px; }
+		button {
+			padding: 3px 12px;
+			font-size: 1em;
+			cursor: pointer;
+			border-radius: 5px;
+			border: 1px solid #999;
+			background: #fff;
+		}
+		button:hover { background: #e0e8f0; }
+		input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+		input[type="range"] { vertical-align: middle; }
+		label { cursor: pointer; }
+		#statusText {
+			margin-top: 8px;
+			padding: 7px 14px;
+			border-radius: 8px;
+			font-size: 0.93em;
+			min-height: 1.6em;
+			background: #e0e8f0;
+			border: 1px solid #b0c0d0;
+		}
+		h3 { margin-top: 1.2em; }
+	</style>
+</head>
+<body>
+
+<h1>Newton's Method — The Saddle Point Problem</h1>
+
+<div class="card">
+	<div id="plot3d" style="width:100%;height:620px;border:2px solid #444;border-radius:4px;"></div>
+	<div id="statusText">Loading…</div>
+	<div class="controls">
+		<div class="ctrl">
+			Steps:
+			<button onclick="sim.changeSteps(-1)">&#8722;</button>
+			<input type="text" id="stepsInput" value="5" readonly
+			       style="width:36px;text-align:center;font-size:1em;">
+			<button onclick="sim.changeSteps(+1)">&#43;</button>
+		</div>
+		<div class="ctrl">
+			x&#x2080;&thinsp;=&thinsp;<span id="x0Display"
+			  style="font-family:monospace;background:#fff;padding:2px 9px;border-radius:6px;border:1px solid #bbb;"></span>
+		</div>
+		<div class="ctrl">
+			Presets:
+			<button onclick="sim.setPreset('saddle')"
+			        title="Starts near the non-convex strip — converges to the saddle with standard Newton">
+				&#9656; Saddle start&nbsp;(0.10,&thinsp;1.00)
+			</button>
+			<button onclick="sim.setPreset('min')"
+			        title="Starts in the convex basin — converges to a minimum with both methods">
+				&#9656; Minimum start&nbsp;(1.50,&thinsp;0.50)
+			</button>
+		</div>
+		<div class="ctrl">
+			<input type="checkbox" id="showNonConvex" onchange="sim.update()">
+			<label for="showNonConvex">Show non-convex regions</label>
+		</div>
+		<div class="ctrl">
+			<input type="checkbox" id="useProjected" onchange="sim.update()">
+			<label for="useProjected">Projected Newton&nbsp;&nbsp;&epsilon;&thinsp;=</label>
+			<input type="range" id="epsSlider" min="0.1" max="4.0" step="0.1" value="2.0"
+			       oninput="document.getElementById('epsVal').textContent=
+			                parseFloat(this.value).toFixed(1); sim.update();">
+			<span id="epsVal" style="font-family:monospace;min-width:34px;">2.0</span>
+		</div>
+	</div>
+	<p style="margin:8px 0 0 4px;color:#555;font-size:0.87em;">
+		Click anywhere on the surface to place the starting point x&#x2080;.
+	</p>
+</div>
+
+<!-- ===================== THEORY ===================== -->
+<div class="card">
+	<h2>Background</h2>
+
+	<h3>The double-well function</h3>
+	<p>
+		$$f(x_1, x_2) = (x_1^2 - 1)^2 + \tfrac{1}{2}x_2^2$$
+	</p>
+	<p>
+		This function has two global minima at $\mathbf{x}^* = (\pm 1,\,0)$ with $f = 0$,
+		and a <strong>saddle point</strong> at the origin $(0,0)$ with $f = 1$.
+		It serves as a minimal, transparent example where pure Newton's method does not converge to a minimum.
+	</p>
+
+	<h3>Gradient and Hessian</h3>
+	<p>
+		$$\nabla f = \begin{pmatrix}4x_1(x_1^2-1)\\x_2\end{pmatrix},
+		\qquad
+		\mathbf{H}(x_1,x_2) = \begin{pmatrix}12x_1^2-4 & 0\\0 & 1\end{pmatrix}$$
+	</p>
+	<p>
+		At the saddle: $\mathbf{H}(0,0) = \operatorname{diag}(-4,\;1)$.
+		One eigenvalue is negative — the Hessian is <em>indefinite</em>.
+		The quadratic Taylor model $q(\mathbf{x}) = f + \nabla f^\top \delta + \tfrac{1}{2}\delta^\top\mathbf{H}\delta$
+		is then <em>unbounded below</em>: it has no global minimizer.
+	</p>
+
+	<h3>Non-convex regions (checkbox 1)</h3>
+	<p>
+		The smaller Hessian eigenvalue $12x_1^2 - 4$ is negative wherever
+		$$|x_1| < \frac{1}{\sqrt{3}} \approx 0.577.$$
+		Inside this vertical strip the function is locally non-convex.
+		Enable the first checkbox to highlight the non-convex part of the surface in orange.
+	</p>
+
+	<h3>Why Newton converges to the saddle</h3>
+	<p>
+		Newton's update $\mathbf{x}_{n+1} = \mathbf{x}_n - \mathbf{H}^{-1}\nabla f$
+		minimizes the local quadratic model.
+		When the Hessian is indefinite, the "minimizer" of that unbounded model
+		can be a saddle point of $f$.
+		Starting near $(0.10,\;1.00)$: the Hessian at that point is
+		$\mathbf{H} \approx \operatorname{diag}(-3.88,\;1)$, and the Newton step
+		lands almost exactly on the saddle $(0,0)$ in one iteration.
+		Once there, $\nabla f = \mathbf{0}$ and the method stalls — at a point that
+		is <em>not</em> a local minimum.
+	</p>
+
+	<h3>Projected Newton — eigenvalue clamping (checkbox 2)</h3>
+	<p>
+		One standard remedy is to replace $\mathbf{H}$ by a positive-definite surrogate
+		$\mathbf{H}_\varepsilon$ obtained by clamping all eigenvalues from below:
+		$$\mathbf{H}_\varepsilon
+		  = \mathbf{V}\,\operatorname{diag}\!\bigl(\max(\lambda_1,\varepsilon),\;
+		    \max(\lambda_2,\varepsilon)\bigr)\,\mathbf{V}^\top, \qquad \varepsilon > 0,$$
+		where $\mathbf{H} = \mathbf{V}\boldsymbol{\Lambda}\mathbf{V}^\top$ is the
+		eigendecomposition. Because $\mathbf{H}_\varepsilon \succ 0$, the modified step
+		$\mathbf{x}_{n+1} = \mathbf{x}_n - \mathbf{H}_\varepsilon^{-1}\nabla f$
+		is always a descent direction ($\nabla f^\top \mathbf{H}_\varepsilon^{-1} \nabla f > 0$).
+		A <strong>backtracking line search</strong> (Armijo condition) is applied to control
+		the step length and guarantee a sufficient decrease in $f$.
+	</p>
+	<p>
+		Use the slider to vary $\varepsilon$ and observe the trade-off:
+		large $\varepsilon$ strongly deflects the step away from the saddle but slows convergence
+		(it resembles gradient descent when $\varepsilon \gg \|\mathbf{H}\|$);
+		small $\varepsilon$ keeps close to the original Newton step and converges faster
+		once the iterates leave the non-convex region.
+	</p>
+	<p>
+		In practice, eigenvalue clamping is combined with a line search or trust-region strategy.
+	</p>
+</div>
+
+<!-- ===================== SCRIPT ===================== -->
+<script>
+// =======================================================================
+//  2×2 linear algebra helpers
+// =======================================================================
+
+function solve2x2(H, g)
+{
+	const [a, b] = H[0], [c, d] = H[1];
+	const det = a * d - b * c;
+	if (Math.abs(det) < 1e-14) return [0, 0];
+	return [(d * g[0] - b * g[1]) / det,
+	        (a * g[1] - c * g[0]) / det];
+}
+
+function eigenvalues2x2sym(H)
+{
+	const a = H[0][0], b = H[0][1], d = H[1][1];
+	const tr   = a + d;
+	const disc = Math.sqrt(Math.max(0, (a - d) ** 2 + 4 * b * b));
+	return [(tr + disc) / 2, (tr - disc) / 2];
+}
+
+function eigenvectors2x2sym(H)
+{
+	const a = H[0][0], b = H[0][1], d = H[1][1];
+	const disc = Math.sqrt(Math.max(0, (a - d) ** 2 + 4 * b * b));
+	const lam1 = ((a + d) + disc) / 2;
+	let v1 = Math.abs(b) > 1e-12
+	       ? [lam1 - d, b]
+	       : (Math.abs(a) >= Math.abs(d) ? [1, 0] : [0, 1]);
+	const len = Math.hypot(v1[0], v1[1]);
+	v1 = [v1[0] / len, v1[1] / len];
+	return [v1, [-v1[1], v1[0]]];
+}
+
+// Project H to PD by clamping eigenvalues to >= eps
+function projectHessian(H, eps)
+{
+	const lams     = eigenvalues2x2sym(H);
+	const [v1, v2] = eigenvectors2x2sym(H);
+	const l1 = Math.max(lams[0], eps);
+	const l2 = Math.max(lams[1], eps);
+	return [
+		[l1 * v1[0] ** 2  + l2 * v2[0] ** 2,
+		 l1 * v1[0] * v1[1] + l2 * v2[0] * v2[1]],
+		[l1 * v1[1] * v1[0] + l2 * v2[1] * v2[0],
+		 l1 * v1[1] ** 2  + l2 * v2[1] ** 2]
+	];
+}
+
+// =======================================================================
+//  Double-well function: f = (x1^2 - 1)^2 + x2^2
+//  Saddle at (0,0), global minima at (±1, 0)
+// =======================================================================
+function doubleWell(x, y)
+{
+	const A = x * x - 1.0;
+	return {
+		f:    A * A + 0.5 * y * y,
+		grad: [4 * x * A, y],
+		H:    [[12 * x * x - 4, 0], [0, 1]]
+	};
+}
+
+// Unicode subscript digits for labeling iterates
+const SUBDIGIT = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉'];
+function sub(i) { return 'x' + (i < 10 ? SUBDIGIT[i] : String(i)); }
+
+// =======================================================================
+//  One Newton step (standard or projected + Armijo line search)
+// =======================================================================
+function oneStep(x, useProj, eps)
+{
+	const { f: f0, grad, H } = doubleWell(x[0], x[1]);
+	const Heff = useProj ? projectHessian(H, eps) : H;
+	const d    = solve2x2(Heff, grad);  // Heff · d = grad
+
+	if (!useProj)
+	{
+		// Standard Newton: full step (may converge to saddle)
+		return [x[0] - d[0], x[1] - d[1]];
+	}
+
+	// Projected Newton: backtracking line search (Armijo condition).
+	// Direction p = -d.  grad · p = -(grad · d) = -(grad · H_eps^{-1} · grad) < 0 → descent.
+	const slope = -(grad[0] * d[0] + grad[1] * d[1]);
+	const C1    = 1e-4;
+	let alpha   = 1.0;
+	for (let k = 0; k < 30; k++)
+	{
+		const xt = [x[0] - alpha * d[0], x[1] - alpha * d[1]];
+		if (doubleWell(xt[0], xt[1]).f <= f0 + C1 * alpha * slope) return xt;
+		alpha *= 0.5;
+	}
+	return [x[0] - alpha * d[0], x[1] - alpha * d[1]];
+}
+
+// =======================================================================
+//  Simulation / Plot controller
+// =======================================================================
+class Sim
+{
+	constructor()
+	{
+		this.x0          = [0.10, 1.00];
+		this.nSteps      = 5;
+		this.plotInited  = false;
+	}
+
+	setPreset(name)
+	{
+		if (name === 'saddle') this.x0 = [0.10, 1.00];
+		if (name === 'min')    this.x0 = [1.50, 0.50];
+		this.update();
+	}
+
+	changeSteps(delta)
+	{
+		this.nSteps = Math.max(1, Math.min(20, this.nSteps + delta));
+		document.getElementById('stepsInput').value = this.nSteps;
+		this.update();
+	}
+
+	computePath(useProj, eps)
+	{
+		const path = [this.x0.slice()];
+		let cur    = this.x0.slice();
+		for (let i = 0; i < this.nSteps; i++)
+		{
+			const next = oneStep(cur, useProj, eps);
+			if (!isFinite(next[0]) || !isFinite(next[1])) break;
+			// Stop if diverging far outside the interesting domain
+			if (Math.abs(next[0]) > 8 || Math.abs(next[1]) > 8) break;
+			path.push(next.slice());
+			cur = next;
+		}
+		return path;
+	}
+
+	// Classify the last iterate
+	classifyPt(p)
+	{
+		const fv      = doubleWell(p[0], p[1]).f;
+		const dSaddle = Math.hypot(p[0],       p[1]);
+		const dMinP   = Math.hypot(p[0] - 1.0, p[1]);
+		const dMinN   = Math.hypot(p[0] + 1.0, p[1]);
+		const TOLS    = 0.07;
+		if (dSaddle < TOLS) return `<span style="color:#c00;font-weight:bold">SADDLE&thinsp;(0,&thinsp;0) — not a minimum! f = ${fv.toFixed(4)}</span>`;
+		if (dMinP   < TOLS) return `<span style="color:#080;font-weight:bold">minimum&thinsp;(+1,&thinsp;0), f = ${fv.toExponential(3)}</span>`;
+		if (dMinN   < TOLS) return `<span style="color:#080;font-weight:bold">minimum&thinsp;(−1,&thinsp;0), f = ${fv.toExponential(3)}</span>`;
+		return `(${p[0].toFixed(3)},&thinsp;${p[1].toFixed(3)}),&thinsp;f = ${fv.toFixed(4)}`;
+	}
+
+	buildStatusHtml(pathStd, pathProj, useProj)
+	{
+		const n    = pathStd.length - 1;
+		const last = pathStd[pathStd.length - 1];
+		let html = `<b>Standard Newton</b> after ${n} step${n !== 1 ? 's' : ''}&thinsp;→ ${this.classifyPt(last)}`;
+		if (useProj && pathProj)
+		{
+			const np    = pathProj.length - 1;
+			const lastp = pathProj[pathProj.length - 1];
+			html += `<br><b>Projected Newton</b> (ε&thinsp;= ${document.getElementById('epsVal').textContent}) after ${np} step${np !== 1 ? 's' : ''}&thinsp;→ ${this.classifyPt(lastp)}`;
+		}
+		return html;
+	}
+
+	update()
+	{
+		// Read controls
+		const showNC  = document.getElementById('showNonConvex').checked;
+		const useProj = document.getElementById('useProjected').checked;
+		const eps     = parseFloat(document.getElementById('epsSlider').value);
+
+		document.getElementById('x0Display').textContent =
+			`(${this.x0[0].toFixed(2)}, ${this.x0[1].toFixed(2)})`;
+
+		// ---------------------------------------------------------------
+		//  Build surface grid
+		// ---------------------------------------------------------------
+		const NX = 72, NY = 60;
+		const X1LO = -2.3, X1HI = 2.3, X2LO = -1.9, X2HI = 1.9;
+		const xArr = Array.from({ length: NX }, (_, i) => X1LO + (X1HI - X1LO) * i / (NX - 1));
+		const yArr = Array.from({ length: NY }, (_, j) => X2LO + (X2HI - X2LO) * j / (NY - 1));
+
+		const zGrid   = [];  // full surface
+		const zNonCvx = [];  // NaN where convex, z where non-convex (min eigenvalue < 0)
+
+		for (let j = 0; j < NY; j++)
+		{
+			const rowZ = [], rowNC = [];
+			for (let i = 0; i < NX; i++)
+			{
+				const { f, H } = doubleWell(xArr[i], yArr[j]);
+				const lams      = eigenvalues2x2sym(H);
+				const minLam    = Math.min(lams[0], lams[1]);
+				rowZ.push(f);
+				rowNC.push(minLam < 0 ? f : NaN);
+			}
+			zGrid.push(rowZ);
+			zNonCvx.push(rowNC);
+		}
+
+		// ---------------------------------------------------------------
+		//  Compute Newton paths
+		// ---------------------------------------------------------------
+		const pathStd  = this.computePath(false, eps);
+		const pathProj = useProj ? this.computePath(true, eps) : null;
+
+		document.getElementById('statusText').innerHTML =
+			this.buildStatusHtml(pathStd, pathProj, useProj);
+
+		// ---------------------------------------------------------------
+		//  Build Plotly traces
+		// ---------------------------------------------------------------
+		const Z_LIFT = 0.06;   // raise paths/markers above the surface to avoid clipping
+		const traces = [];
+
+		// 1. Main surface (colored by function value)
+		traces.push({
+			type:      'surface',
+			x: xArr, y: yArr, z: zGrid,
+			colorscale: 'Jet',
+			cmin:       0,
+			cmax:       5,
+			showscale:  true,
+			colorbar:   { title: 'f(x₁,x₂)', thickness: 14, len: 0.65, x: 1.01 },
+			opacity:    showNC ? 0.80 : 1.0,
+			name:       'f(x₁,x₂)',
+			contours: {
+				x: { show: true, start: -2.0, end: 2.0, size: 0.1,
+				     color: 'rgba(60,60,60,0.55)', width: 0.1, highlight: false },
+				y: { show: true, start: -1.5, end: 1.5, size: 0.1,
+				     color: 'rgba(60,60,60,0.55)', width: 0.1, highlight: false },
+				z: { show: false }
+			},
+			hovertemplate: 'x₁ = %{x:.3f}<br>x₂ = %{y:.3f}<br>f = %{z:.4f}<extra></extra>'
+		});
+
+		// 2. Non-convex overlay: same surface but shown only where min eigenvalue < 0
+		if (showNC)
+		{
+			traces.push({
+				type:       'surface',
+				x: xArr, y: yArr, z: zNonCvx,
+				colorscale: [[0, 'rgb(255,100,0)'], [1, 'rgb(255,100,0)']],
+				showscale:  false,
+				opacity:    0.62,
+				name:       'Non-convex (λ_min < 0)',
+				hoverinfo:  'skip'
+			});
+		}
+
+		// 3. Standard Newton path (white)
+		const zStd = pathStd.map(p => doubleWell(p[0], p[1]).f + Z_LIFT);
+		traces.push({
+			type: 'scatter3d',
+			x:    pathStd.map(p => p[0]),
+			y:    pathStd.map(p => p[1]),
+			z:    zStd,
+			mode: 'lines+markers+text',
+			line:         { color: '#ffffff', width: 6 },
+			marker:       { color: '#ffffff', size: 7, symbol: 'circle',
+			                line: { color: '#333', width: 1 } },
+			text:         pathStd.map((_, i) => sub(i)),
+			textfont:     { size: 12, color: '#fff' },
+			textposition: 'top center',
+			name:         'Standard Newton',
+			showlegend:   true
+		});
+
+		// 4. Projected Newton path (orange), only when checkbox is on
+		if (useProj && pathProj)
+		{
+			const zProj = pathProj.map(p => doubleWell(p[0], p[1]).f + Z_LIFT);
+			traces.push({
+				type: 'scatter3d',
+				x:    pathProj.map(p => p[0]),
+				y:    pathProj.map(p => p[1]),
+				z:    zProj,
+				mode: 'lines+markers+text',
+				line:         { color: '#ff9900', width: 6 },
+				marker:       { color: '#ff9900', size: 7, symbol: 'circle',
+				                line: { color: '#333', width: 1 } },
+				text:         pathProj.map((_, i) => sub(i)),
+				textfont:     { size: 12, color: '#ff9900' },
+				textposition: 'top center',
+				name:         `Projected Newton (ε = ${eps.toFixed(1)})`,
+				showlegend:   true
+			});
+		}
+
+		// 5. Saddle point marker
+		traces.push({
+			type: 'scatter3d',
+			x: [0], y: [0], z: [doubleWell(0, 0).f + Z_LIFT],
+			mode: 'markers+text',
+			marker:       { color: '#ff2222', size: 10, symbol: 'circle',
+			                line: { color: 'white', width: 2 } },
+			text:         ['Saddle (0,0)'],
+			textfont:     { size: 12, color: '#ff4444' },
+			textposition: 'top center',
+			name:         'Saddle point',
+			showlegend:   true
+		});
+
+		// 6. Global minima markers
+		traces.push({
+			type: 'scatter3d',
+			x: [1.0, -1.0], y: [0, 0], z: [Z_LIFT, Z_LIFT],
+			mode: 'markers+text',
+			marker:       { color: '#00ee66', size: 10, symbol: 'circle',
+			                line: { color: 'white', width: 2 } },
+			text:         ['Min (+1, 0)', 'Min (−1, 0)'],
+			textfont:     { size: 12, color: '#00ee66' },
+			textposition: 'top center',
+			name:         'Global minima',
+			showlegend:   true
+		});
+
+		// ---------------------------------------------------------------
+		//  Layout — preserve user camera after first render
+		// ---------------------------------------------------------------
+		const gd = document.getElementById('plot3d');
+		let camera = { eye: { x: 1.2, y: -1.4, z: 1.6 } };
+		if (this.plotInited && gd._fullLayout && gd._fullLayout.scene)
+		{
+			camera = JSON.parse(JSON.stringify(gd._fullLayout.scene.camera));
+		}
+
+		const layout = {
+			title: {
+				text: "f (x₁, x₂) = (x₁² − 1)² + ½ x₂²",
+				font: { size: 15 }
+			},
+			scene: {
+				xaxis: { title: 'x₁', range: [X1LO, X1HI] },
+				yaxis: { title: 'x₂', range: [X2LO, X2HI] },
+				zaxis: { title: 'f',  range: [-0.1, 3.5]  },
+				camera: camera,
+				bgcolor: '#f5f5f8',
+				aspectmode: 'manual',
+				aspectratio: { x: 1.2, y: 1.0, z: 0.65 }
+			},
+			legend: {
+				x: 0.01, y: 0.99,
+				xanchor: 'left', yanchor: 'top',
+				bgcolor: 'rgba(30,30,30,0.80)',
+				bordercolor: '#888', borderwidth: 1,
+				font: { color: 'white', size: 11 }
+			},
+			margin:          { l: 0, r: 0, t: 38, b: 0 },
+			paper_bgcolor:   '#e4ecf4'
+		};
+
+		if (!this.plotInited)
+		{
+			Plotly.newPlot('plot3d', traces, layout).then(plotDiv =>
+			{
+				plotDiv.on('plotly_click', e =>
+				{
+					if (e.points && e.points.length > 0)
+					{
+						const pt = e.points[0];
+						if (typeof pt.x === 'number' && typeof pt.y === 'number')
+						{
+							this.x0 = [pt.x, pt.y];
+							// Defer so Plotly finishes the click event before
+							// react() is called — avoids re-entrancy hang.
+							setTimeout(() => this.update(), 0);
+						}
+					}
+				});
+			});
+			this.plotInited = true;
+		}
+		else
+		{
+			Plotly.react('plot3d', traces, layout);
+		}
+	}
+}
+
+const sim = new Sim();
+sim.update();
+</script>
+
+</body>
+</html>

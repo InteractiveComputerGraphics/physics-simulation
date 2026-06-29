@@ -1,0 +1,323 @@
+/* ================================================================
+   teaching.css  —  Shared stylesheet for SimJS teaching examples
+   ================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+
+/* ── Reset ────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+/* ── Page & background ────────────────────────────────────────── */
+body {
+	font-family: 'Inter', 'Segoe UI', Helvetica, Arial, sans-serif;
+	background-color: #eef2ff;
+	background-image:
+		radial-gradient(ellipse 70% 40% at 10%  5%,  rgba(219,234,254,0.95) 0%, transparent 55%),
+		radial-gradient(ellipse 55% 45% at 90% 95%, rgba(233, 240, 254, 0.95) 0%, transparent 55%);
+	min-height: 100vh;
+	color: #1e293b;
+	padding-bottom: 52px;
+	line-height: 1.65;
+}
+
+/* ── Page header banner ───────────────────────────────────────── */
+.page-header {
+	background: linear-gradient(120deg, #2e4681 0%, #466ee5 48%, #0891b2 100%);
+	padding: 26px 32px 22px;
+	text-align: center;
+	box-shadow: 0 4px 28px rgba(49,46,129,0.38);
+	margin-bottom: 32px;
+	position: relative;
+	overflow: hidden;
+}
+
+/* Decorative background circles */
+.page-header::before,
+.page-header::after {
+	content: '';
+	position: absolute;
+	border-radius: 50%;
+	opacity: 0.10;
+	background: #fff;
+	pointer-events: none;
+}
+.page-header::before { width: 380px; height: 380px; top: -190px; left: -80px; }
+.page-header::after  { width: 220px; height: 220px; bottom: -110px; right:  50px; }
+
+.page-header h1 {
+	font-size: 1.95rem;
+	font-weight: 100;
+	color: #fff;
+	letter-spacing: -0.4px;
+	text-shadow: 0 2px 14px rgba(0,0,0,0.40);
+	position: relative;   /* sits above ::before / ::after */
+	margin: 0;
+}
+
+/* Fallback: plain h1 when .page-header wrapper is not used */
+body > h1,
+main > h1 {
+	text-align: center;
+	font-size: 1.9rem;
+	font-weight: 800;
+	background: linear-gradient(90deg, #2e3f81, #4676e5 50%, #0891b2);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	background-clip: text;
+	margin: 30px 0 24px;
+}
+
+/* ── Layout wrapper ───────────────────────────────────────────── */
+main,
+.content-wrapper {
+	max-width: 1240px;
+	margin: 0 auto;
+	padding: 0 22px;
+}
+
+/* ── Card ─────────────────────────────────────────────────────── */
+.card {
+	background: #fff;
+	border-radius: 20px;
+	box-shadow: 0 4px 28px rgba(70, 107, 229, 0.09), 0 1px 4px rgba(0,0,0,0.05);
+	padding: 24px 28px;
+	margin-bottom: 24px;
+	border: 1px solid rgba(199, 221, 254, 0.55);
+}
+
+/* ── Simulation panel (canvas + controls side by side) ────────── */
+.sim-panel {
+	display: flex;
+	gap: 24px;
+	align-items: flex-start;
+	flex-wrap: wrap;
+}
+
+.sim-canvas-wrap { flex: 1 1 auto; min-width: 0; }
+
+/* Let the canvas fill its flex wrapper so it shrinks alongside the controls panel */
+.sim-canvas-wrap canvas { width: 100%; }
+
+canvas {
+	border: 3px solid #a5cffc;
+	border-radius: 16px;
+	display: block;
+	max-width: 100%;
+	box-shadow: 0 8px 36px rgba(79,70,229,0.22), 0 2px 6px rgba(0,0,0,0.08);
+}
+
+.canvas-hint {
+	font-size: 0.82rem !important;
+	color: #6b7280 !important;
+	margin: 8px 0 0 2px !important;
+}
+
+/* ── Controls panel ───────────────────────────────────────────── */
+.controls-panel {
+	flex: 0 0 230px;
+	min-width: 195px;
+	background: #f5f7ff;
+	border-radius: 16px;
+	padding: 18px 20px 22px;
+	border: 1px solid #dde3f8;
+	box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+	margin-bottom: 24px;
+}
+
+.controls-panel > h3 {
+	margin: 0 0 16px !important;
+	font-size: 0.78rem !important;
+	color: #6397f1 !important;
+	font-weight: 700 !important;
+	text-transform: uppercase;
+	letter-spacing: 0.8px;
+	border-bottom: 1px solid #e0e7ff;
+	padding-bottom: 8px;
+}
+
+.controls-grid {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 10px 12px;
+	align-items: center;
+}
+
+.controls-grid .full-width { grid-column: 1 / -1; }
+
+.plots-grid {
+	display: grid;	
+	grid-template-columns: auto auto;
+	gap: 2px 2px;
+	align-items: center;
+}
+
+
+/* ── Labels ───────────────────────────────────────────────────── */
+label {
+	font-size: 0.84rem;
+	font-weight: 500;
+	color: #4b5563;
+	white-space: nowrap;
+	cursor: default;
+}
+
+/* ── Stat value display ───────────────────────────────────────── */
+.stat-value {
+	font-variant-numeric: tabular-nums;
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: #467be5;
+	background: #eff0ff;
+	padding: 4px 10px;
+	border-radius: 8px;
+	border: 1px solid #c7d2fe;
+	display: block;
+	text-align: right;
+}
+
+/* ── Inputs ───────────────────────────────────────────────────── */
+input[type="number"],
+input[type="text"],
+select {
+	width: 100%;
+	padding: 6px 10px;
+	border: 2px solid #c7d2fe;
+	border-radius: 8px;
+	font-size: 0.88rem;
+	font-family: inherit;
+	color: #1e293b;
+	background: #fff;
+	outline: none;
+	transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+input[type="number"]:focus,
+input[type="text"]:focus,
+select:focus {
+	border-color: #4673e5;
+	box-shadow: 0 0 0 3px rgba(79,70,229,0.13);
+}
+
+input[type="range"] {
+	width: 100%;
+	accent-color: #4673e5;
+	cursor: pointer;
+	vertical-align: middle;
+}
+
+input[type="checkbox"] {
+	width: 17px;
+	height: 17px;
+	accent-color: #4673e5;
+	cursor: pointer;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────── */
+button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	width: 100%;
+	padding: 9px 18px;
+	border: none;
+	border-radius: 10px;
+	font-size: 0.88rem;
+	font-family: inherit;
+	font-weight: 600;
+	cursor: pointer;
+	transition: transform 0.10s, box-shadow 0.14s, background 0.14s;
+	background: linear-gradient(135deg, #4673e5 0%, #6389f1 100%);
+	color: #fff;
+	box-shadow: 0 3px 12px rgba(70, 102, 229, 0.32);
+	margin-top: 2px;
+}
+
+button:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 6px 18px rgba(79,70,229,0.40);
+	background: linear-gradient(135deg, #3869ca 0%, #4673e5 100%);
+}
+
+button:active {
+	transform: translateY(0);
+	box-shadow: 0 2px 6px rgba(70, 112, 229, 0.25);
+}
+
+/* Secondary button variant (e.g. Pause) */
+button.btn-secondary {
+	background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);
+	box-shadow: 0 3px 12px rgba(8,145,178,0.32);
+}
+
+button.btn-secondary:hover {
+	background: linear-gradient(135deg, #0e7490 0%, #0891b2 100%);
+	box-shadow: 0 6px 18px rgba(8,145,178,0.40);
+}
+
+/* Inline (non-full-width) button variant */
+button.btn-inline {
+	width: auto;
+	padding: 3px 12px;
+}
+
+/* ── Section headings ─────────────────────────────────────────── */
+h2 {
+	font-size: 1.22rem;
+	font-weight: 700;
+	color: #2e4081;
+	margin: 24px 0 10px;
+	padding-bottom: 8px;
+	border-bottom: 2px solid #e0e7ff;
+}
+
+h3 {
+	font-size: 1.00rem;
+	font-weight: 600;
+	color: #3869ca;
+	margin: 16px 0 6px;
+}
+
+h4 {
+	font-size: 0.95rem;
+	font-weight: 500;
+	color: #448dc9;
+	margin: 16px 0 6px;
+}
+
+p {
+	font-size: 0.95rem;
+	color: #374151;
+	margin-bottom: 10px;
+}
+
+/* ── Theory / text card accent ────────────────────────────────── */
+.theory {
+	border-left: 4px solid #4673e5;
+}
+
+.theory h2:first-child { margin-top: 0; }
+
+/* ── Optional info badges ─────────────────────────────────────── */
+.badge {
+	display: inline-block;
+	padding: 3px 11px;
+	border-radius: 20px;
+	font-size: 0.74rem;
+	font-weight: 600;
+	letter-spacing: 0.4px;
+	text-transform: uppercase;
+}
+.badge-pde    { background: #dbeafe; color: #1e40af; }
+.badge-ode    { background: #dcfce7; color: #166534; }
+.badge-linalg { background: #fef3c7; color: #92400e; }
+.badge-opt    { background: #fce7f3; color: #9d174d; }
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 820px) {
+	.sim-panel      { flex-direction: column; }
+	.controls-panel { flex: 1 1 auto; min-width: unset; }
+	.page-header h1,
+	body > h1       { font-size: 1.4rem; }
+	.card           { padding: 18px 16px; }
+}
