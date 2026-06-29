@@ -2,10 +2,8 @@
 <html class="no-js" lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,74 +16,70 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
 	<title>SPH Approximation</title>
 </head>
 <body>
-<main>
-	<h1 style="text-align:center">SPH Approximation</h1>
-	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="400"> 
-		<col width="400" height="400"> 
-		<tr>
-			<td>
-				<div id="plotOutput" style="width: 600px; height: 600px;border:2px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
-			</td>
-			<td>
-				<div id="plotOutput2" style="width: 600px; height: 600px;border:2px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
-			</td>
-		</tr>
-		<tr>
-		<td><table style="margin:20px">	
-			<col width="200" style="padding-right:10px"> 
-			<col width="100"> 
-			<tr>
-				<td><label>Particle radius</label></td>
-				<td><span>0.025</span></td>
-			</tr>
-			<tr>
-				<td><label for="supportRadius">Support radius</label></td>
-				<td><input onchange="plot.reset()" id="supportRadius" value="0.1" type="input"></td>
-			</tr>
-			<tr>
-				<td><label for="randomOffset">Add random offset</label></td>
-				<td><input onchange="plot.reset()" id="randomOffset" type="checkbox"></td>
-			</tr>
-			<tr>
-				<td><label for="shepardFilter">Use Shepard filter</label></td>
-				<td><input onchange="plot.plotFunctions()" id="shepardFilter" type="checkbox"></td>
-			</tr>
-		</table></td>
-		</tr>
 
-		<tr><td colspan="2">
-			<h2>SPH Approximation of different functions:</h2>
-			In this example we discretized a linear and a quadratic polynomial as well as a trigonometric function using SPH with the cubic spline kernel [KBST19, KBST22]. The left plot shows the particle sampling pattern while the right plot shows the exact functions and their SPH approximations. To compute the SPH approximations the function values are sampled along the red line in the left plot. That means that for each point on the line the neighbors are determined and the SPH approximation formula is applied:
-			$$\langle f(x,y) \rangle = \sum_j \frac{m_j}{\rho_j} f(x_j,y_j) W_{ij}$$
+<header class="page-header">
+	<h1>SPH Approximation</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+		<div class="card sim-panel">
+			<div class="sim-canvas-wrap">
+				<div class="plots-grid" width="100%">
+					<div id="plotOutput" style="border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+					<div id="plotOutput2" style="border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+				</div>
+			</div> 
+		</div>
+		<div class="controls-panel" style="width: 100%;align:center;margin-left:auto;margin-right:auto">
+		<h3>Controls</h3>
+		<div class="controls-grid" style="width: 400px;align:left">
+			<label>Particle radius</label>
+			<span>0.025</span>
 			
-			Linear function: 
-			$$f(x,y) = \frac12 (x+y)$$
-			
-			Quadratic_function:
-			$$f(x,y) = \frac12 (x^2+y^2)-1$$
-			
-			Trigonometric function:
-			$$f(x,y) = \sin(5 x) \cos(3y)$$
-			
-			<h3>Shepard filter</h3>
-			The SPH approximation of a fluid quantity is error-prone if the particle neighborhood is only partially filled. To consider this in the computation the smoothing kernel can be corrected by a factor $s_i$:
-			$$\tilde {W}_{ij} = s_i W_{ij} = \frac{1}{\sum_k \frac{m_k}{\rho_k} W_{ik}} W_{ij}.$$
-			
-			
-			<h3>References</h3>
-			<ul>
-			<li>[KBST19] Dan Koschier, Jan Bender, Barbara Solenthaler, Matthias Teschner. Smoothed Particle Hydrodynamics for Physically-Based Simulation of Fluids and Solids. Eurographics Tutorial, 2019
-			<li>[KBST22] Dan Koschier, Jan Bender, Barbara Solenthaler, Matthias Teschner. A Survey on SPH Methods in Computer Graphics. Computer Graphics Forum, 2022
-			</li>
-			</ul>
-		</td></tr>
-	</table>	
+			<label for="supportRadius">Support radius</label></td>
+			<input onchange="plot.reset()" id="supportRadius" value="0.1" type="input">
+
+			<label for="randomOffset">Add random offset</label>
+			<input onchange="plot.reset()" id="randomOffset" type="checkbox">
+
+			<label for="shepardFilter">Use Shepard filter</label>
+			<input onchange="plot.plotFunctions()" id="shepardFilter" type="checkbox">
+		</div>
+	</div>
+
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>SPH Approximation of different functions:</h2>
+		In this example we discretized a linear and a quadratic polynomial as well as a trigonometric function using SPH with the cubic spline kernel [KBST19, KBST22]. The left plot shows the particle sampling pattern while the right plot shows the exact functions and their SPH approximations. To compute the SPH approximations the function values are sampled along the red line in the left plot. That means that for each point on the line the neighbors are determined and the SPH approximation formula is applied:
+		$$\langle f(x,y) \rangle = \sum_j \frac{m_j}{\rho_j} f(x_j,y_j) W_{ij}$$
+		
+		Linear function: 
+		$$f(x,y) = \frac12 (x+y)$$
+		
+		Quadratic_function:
+		$$f(x,y) = \frac12 (x^2+y^2)-1$$
+		
+		Trigonometric function:
+		$$f(x,y) = \sin(5 x) \cos(3y)$$
+		
+		<h3>Shepard filter</h3>
+		The SPH approximation of a fluid quantity is error-prone if the particle neighborhood is only partially filled. To consider this in the computation the smoothing kernel can be corrected by a factor $s_i$:
+		$$\tilde {W}_{ij} = s_i W_{ij} = \frac{1}{\sum_k \frac{m_k}{\rho_k} W_{ik}} W_{ij}.$$
+		
+		
+		<h3>References</h3>
+		<ul>
+		<li>[KBST19] Dan Koschier, Jan Bender, Barbara Solenthaler, Matthias Teschner. Smoothed Particle Hydrodynamics for Physically-Based Simulation of Fluids and Solids. Eurographics Tutorial, 2019
+		<li>[KBST22] Dan Koschier, Jan Bender, Barbara Solenthaler, Matthias Teschner. A Survey on SPH Methods in Computer Graphics. Computer Graphics Forum, 2022
+		</li>
+		</ul>
+	</div>	
 	
 </main>
 
@@ -380,7 +374,7 @@
 			var data = [trace_linear_orig, trace_linear, trace_quadratic_orig, trace_quadratic, trace_trigonometric_orig, trace_trigonometric];
 			
 			var layout = {
-			  title: 'Functions',
+			  title: 'Functions', 
 			  width: 600,
 			  height: 600
 			};
@@ -433,8 +427,8 @@
 			
 			var layout = {
 			  title: 'Particles',
-			  width: 600,
-			  height: 600,
+			  width: 550, 
+			  height: 550,
 			  xaxis: {
 				autorange: [0,2],
 			  },
