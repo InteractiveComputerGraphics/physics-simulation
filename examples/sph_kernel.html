@@ -2,10 +2,8 @@
 <html class="no-js" lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,102 +16,96 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
 	<title>SPH Kernel</title>
 </head>
 <body>
-<main>
-	<h1 style="text-align:center">SPH Kernel</h1>
-	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="1000"> 
-		<tr>
-			<td>
-				<div id="plotOutput" style="width: 1000px; height: 600px;border:2px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
-			</td>
-		</tr>
-		<tr>
-			<td><table style="margin:20px">	
-				<col width="200" style="padding-right:10px"> 
-				<col width="100"> 
-				<tr>
-					<td><label for="supportRadius">Support radius</label></td>
-					<td><input type="text" id="textInput" value="0.2" readonly></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><input onchange="document.getElementById('textInput').value=this.value;plot.reset()" id="supportRadius" value="0.2" type="range"  min="0.01" max="1" step="0.01"></td>
-				</tr>
-				<tr>
-					<td><label for="kernelFct">Kernel function</label></td>
-					<td><select onchange="plot.reset()" id="kernelFct" size="1">
-						  <option selected="selected">Cubic spline</option>
-						  <option>Wendland C2</option>
-						  <option>Quintic Spline</option>
-						</select>
-					</td>
-				</tr>
-				 
-			</table></td>
-		</tr>
 
-		<tr><td>
-			<h2>SPH kernel functions:</h2>
-			
-			<p>In the following we investigate different SPH kernel functions and their derivatives. A kernel function $W(\mathbf{r}, h)$ with the smoothing length $h$ must have the following properties:</p>
-			<ul>
-			<li>Normalization condition: $\int_{\mathbb{R}^d} W(\mathbf x - \mathbf x^*, h) d \mathbf x^* = 1 $</li>
-			<li>Symmetry condition: $W(\mathbf x - \mathbf x^*, h) = W(\mathbf x^* - \mathbf x, h)$</li>
-			<li>Dirac-$\delta$ condition: $\lim_{h \rightarrow 0} W(\mathbf x - \mathbf x^*, h) = \delta(\mathbf x - \mathbf x^*)$</li>
-			<li>Non-negative condition: $W(\mathbf x - \mathbf x^*, h) \geq 0$</li>
-			<li>Compact support condition with support radius $r$: $W(\mathbf x - \mathbf x^*, h) = 0 \quad \text{if} \quad \|\mathbf x - \mathbf x^*\| > r$</li>
-			</ul>
-			<p>Furthermore, a kernel function should be at least twice continuously differentiable to enable a consistent discretization of 2nd-order partial
+<header class="page-header">
+	<h1>SPH Kernel</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<div class="card sim-panel">
+		<div class="sim-canvas-wrap">
+			<div id="plotOutput" style="width: 100%; height: auto;border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+		</div>
+	</div>
+	<div class="controls-panel" style="width: 100%;align:center;margin-left:auto;margin-right:auto">
+		<h3>Controls</h3>
+		<div class="controls-grid" style="width: 400px;align:left">
+			<label for="supportRadius">Support radius</label>
+			<input type="text" id="textInput" value="0.2" readonly>
+			<label></label>
+			<input onchange="document.getElementById('textInput').value=this.value;plot.reset()" id="supportRadius" value="0.2" type="range"  min="0.01" max="1" step="0.01">
+
+			<label for="kernelFct">Kernel function</label>
+			<select onchange="plot.reset()" id="kernelFct" size="1">
+				<option selected="selected">Cubic spline</option>
+				<option>Wendland C2</option>
+				<option>Quintic Spline</option>
+			</select>
+		</div>
+	</div>
+
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>SPH kernel functions:</h2>
+		
+		<p>In the following we investigate different SPH kernel functions and their derivatives. A kernel function $W(\mathbf{r}, h)$ with the smoothing length $h$ must have the following properties:</p>
+		<ul>
+		<li>Normalization condition: $\int_{\mathbb{R}^d} W(\mathbf x - \mathbf x^*, h) d \mathbf x^* = 1 $</li>
+		<li>Symmetry condition: $W(\mathbf x - \mathbf x^*, h) = W(\mathbf x^* - \mathbf x, h)$</li>
+		<li>Dirac-$\delta$ condition: $\lim_{h \rightarrow 0} W(\mathbf x - \mathbf x^*, h) = \delta(\mathbf x - \mathbf x^*)$</li>
+		<li>Non-negative condition: $W(\mathbf x - \mathbf x^*, h) \geq 0$</li>
+		<li>Compact support condition with support radius $r$: $W(\mathbf x - \mathbf x^*, h) = 0 \quad \text{if} \quad \|\mathbf x - \mathbf x^*\| > r$</li>
+		</ul>
+		<p>Furthermore, a kernel function should be at least twice continuously differentiable to enable a consistent discretization of 2nd-order partial
 differential equations (PDEs).
-			The smoothing length controls defines how strongly a value at position $\mathbf x$ is influenced by the values in its neighborhood. Hence, a larger value $h$ yields a larger smoothing effect.</p>
-			<h3>Popular kernel functions</h3>
-			<h4>Cubic spline kernel [Mon92]</h4>
-			$$W(q) = \alpha_d \begin{cases}
-				\frac23 - q^2 + \frac12 q^3 & 0 \leq q < 1 \\
-				\frac16 (2-q)^3 & 1 \leq q < 2 \\
-				0 & q \geq 2,
-			\end{cases}$$
-			where $q = \frac{\|r\|}{h}$ the kernel normalization factors $\alpha_d$ for the respective
+		The smoothing length controls defines how strongly a value at position $\mathbf x$ is influenced by the values in its neighborhood. Hence, a larger value $h$ yields a larger smoothing effect.</p>
+		<h3>Popular kernel functions</h3>
+		<h4>Cubic spline kernel [Mon92]</h4>
+		$$W(q) = \alpha_d \begin{cases}
+			\frac23 - q^2 + \frac12 q^3 & 0 \leq q < 1 \\
+			\frac16 (2-q)^3 & 1 \leq q < 2 \\
+			0 & q \geq 2,
+		\end{cases}$$
+		where $q = \frac{\|r\|}{h}$ the kernel normalization factors $\alpha_d$ for the respective
 dimensions $d$ are $\alpha_1 = \frac1h$, $\alpha_2 = \frac{15}{7\pi h^2}$, and $\alpha_3 = \frac{3}{2\pi h^3}$.
 
-			<h4>Wendland C2 kernel for 1D [Wen95]</h4>
-			$$W(q) = \alpha_d \begin{cases}
-				\left (1-\frac{q}{2} \right )^3 \left (\frac32 q+1 \right ) & 0 \leq q \leq 2 \\
-				0 & q > 2,
-			\end{cases}$$
-			where the kernel normalization factor is $\alpha_1 = \frac{5}{8h}$.	
+		<h4>Wendland C2 kernel for 1D [Wen95]</h4>
+		$$W(q) = \alpha_d \begin{cases}
+			\left (1-\frac{q}{2} \right )^3 \left (\frac32 q+1 \right ) & 0 \leq q \leq 2 \\
+			0 & q > 2,
+		\end{cases}$$
+		where the kernel normalization factor is $\alpha_1 = \frac{5}{8h}$.	
 
-			<h4>Quintic spline kernel [LL10]</h4>
-			$$W(q) = \alpha_d \begin{cases}
-				(3-q)^5 - 6(2-q)^5 + 15 (1-q)^5 & 0 \leq q \leq 1 \\
-				(3-q)^5 - 6(2-q)^5 & 1 < q \leq 2 \\
-				(3-q)^5 & 2 < q \leq 3 \\
-				0 & q > 3,
-			\end{cases}$$
-			where the kernel normalization factors are $\alpha_1 = \frac{1}{120h}$, $\alpha_2 = \frac{7}{478 \pi h^2}$, and $\alpha_3 = \frac{1}{120 \pi h^3}$.
+		<h4>Quintic spline kernel [LL10]</h4>
+		$$W(q) = \alpha_d \begin{cases}
+			(3-q)^5 - 6(2-q)^5 + 15 (1-q)^5 & 0 \leq q \leq 1 \\
+			(3-q)^5 - 6(2-q)^5 & 1 < q \leq 2 \\
+			(3-q)^5 & 2 < q \leq 3 \\
+			0 & q > 3,
+		\end{cases}$$
+		where the kernel normalization factors are $\alpha_1 = \frac{1}{120h}$, $\alpha_2 = \frac{7}{478 \pi h^2}$, and $\alpha_3 = \frac{1}{120 \pi h^3}$.
 
-			
-			<h3>Derivatives</h3>
-			<p>The gradient of the kernel function is 
-			$$\nabla W = \frac{\partial W}{\partial \mathbf r} = \frac{\partial W(q)}{\partial q} \cdot \frac{\partial q}{\partial \mathbf r} = \frac{\partial W(q)}{\partial q} \frac{\mathbf r} {h \| \mathbf r \|}$$
-			and the Laplacian
-			$$\nabla^2 W = \frac{\partial^2 W(q)}{\partial q^2} \frac{1}{h^2} +  \frac{\partial W(q)}{\partial q} \nabla^2 q$$
-			</p>
-			
-			<h3>References</h3>
-			<ul>
-			<li>[Mon92] J. Monaghan. Smoothed Particle Hydrodynamics. Annual Review of Astronomy and Astrophysics, 1992, 30, 543-574</li>
-			<li>[Wen95] H. Wendland. Piecewise polynomial, positive definite and compactly supported radial functions of minimal degree. Advances in computational Mathematics 4.1, 389-396, 1995</li>
-			<li>[LL10] M. Liu, G. Liu. Smoothed Particle Hydrodynamics (SPH): an Overview and Recent Developments. Archives of Computational Methods in Engineering, 2010, 17, 25-76</li>
-			</ul>
-		</td></tr>
-	</table>	
-	
+		
+		<h3>Derivatives</h3>
+		<p>The gradient of the kernel function is 
+		$$\nabla W = \frac{\partial W}{\partial \mathbf r} = \frac{\partial W(q)}{\partial q} \cdot \frac{\partial q}{\partial \mathbf r} = \frac{\partial W(q)}{\partial q} \frac{\mathbf r} {h \| \mathbf r \|}$$
+		and the Laplacian
+		$$\nabla^2 W = \frac{\partial^2 W(q)}{\partial q^2} \frac{1}{h^2} +  \frac{\partial W(q)}{\partial q} \nabla^2 q$$
+		</p>
+		
+		<h3>References</h3>
+		<ul>
+		<li>[Mon92] J. Monaghan. Smoothed Particle Hydrodynamics. Annual Review of Astronomy and Astrophysics, 1992, 30, 543-574</li>
+		<li>[Wen95] H. Wendland. Piecewise polynomial, positive definite and compactly supported radial functions of minimal degree. Advances in computational Mathematics 4.1, 389-396, 1995</li>
+		<li>[LL10] M. Liu, G. Liu. Smoothed Particle Hydrodynamics (SPH): an Overview and Recent Developments. Archives of Computational Methods in Engineering, 2010, 17, 25-76</li>
+		</ul>
+	</div>	
 </main>
 
 <script id="simulation_code" type="text/javascript">	
@@ -377,8 +369,7 @@ dimensions $d$ are $\alpha_1 = \frac1h$, $\alpha_2 = \frac{15}{7\pi h^2}$, and $
 
 			let layout = {
 			  title: title,
-			  width: 1000,
-			  height: 600,
+			  autosize: true,
 			  xaxis: {
 				range: [-0.5,0.5],
 			  },

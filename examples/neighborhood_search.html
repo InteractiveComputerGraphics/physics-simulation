@@ -1,11 +1,9 @@
 <!doctype html>
 <html class="no-js" lang="en">
 <head>
-	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta charset="utf-8">	
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,59 +16,64 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<title>Neighborhood Search</title>
 </head>
 <body>
+
+<header class="page-header">
+	<h1>Neighborhood Search</h1>
+</header>	
+
 <main>
-	<h1 style="text-align:center">Neighborhood Search</h1>
+	<!-- Simulation panel: canvas + controls -->
 	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="1100"> 
-		<col width="400"> 
+		<col width="1200"> 
+		<col width="300"> 
 		<tr>
 			<td>
-				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+				</div>
 			</td>
 			<td>
-				<table>		
-				<col width="180" style="padding-right:10px"> 
-				<col width="100"> 
-				<tr>
-					<td><label>Time per step</label></td>
-					<td><span id="timePerStep">0.00</span> ms</td>
-				</tr>
-				<tr>
-					<td><label># particles</label></td>
-					<td><span id="numParticles">0</span></td>
-				</tr>
-				<tr>
-					<td><label for="widthInput">Width</label></td>
-					<td><input onchange="gui.restart()" id="widthInput" type="number" value="30" step="1"></td>
-				</tr>
-				<tr>
-					<td><label for="heightInput">Height</label></td>
-					<td><input onchange="gui.restart()" id="heightInput" type="number" value="30" step="1"></td>
-				</tr>
-				<tr>
-				<td><label>Particle radius</label></td>
-				<td><span>0.025</span></td>
-				</tr>
-				<tr>
-					<td><label for="supportRadiusInput">Support radius</label></td>
-					<td><input onchange="gui.restart()" id="supportRadiusInput" value="0.1" type="input"></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
-				</tr>
-				</table>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Time per step</label>
+						<span class="stat-value"><span id="timePerStep">0.00</span> ms</span>
+
+						<label># particles</label>
+						<span class="stat-value"><span id="numParticles">0</span></span>
+
+						<label for="widthInput">Width</label>
+						<input onchange="gui.restart()" id="widthInput" type="number" value="30" step="1">
+
+						<label for="heightInput">Height</label>
+						<input onchange="gui.restart()" id="heightInput" type="number" value="30" step="1">
+
+						<label>Particle radius</label>
+						<span class="stat-value"><span>0.025</span> m</span>
+
+						<label for="supportRadiusInput">Support radius</label>
+						<input onchange="gui.restart()" id="supportRadiusInput" value="0.1" type="input">	
+						
+						<div class="full-width">
+							<button onclick="gui.restart()" id="restart">&#9654; Restart</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.doPause()" id="Pause" class="btn-secondary">&#9646;&#9646; Pause</button>
+						</div>
+					</div>
+				</div>
 			</td>
 		</tr>
-		<tr><td>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
 			<h2>Neighborhood search using spatial hashing:</h2>
 			<p>This example shows how the neighborhood of a particle is determined using spatial hashing [THM+03]. For each particle we want to find its neighbors within a given radius (the support radius of the kernel function). </p>
 				
@@ -83,8 +86,7 @@
 			<ul>
 			<li>[THM+03] Matthias Teschner, Bruno Heidelberger, Matthias Müller, Danat Pomeranets, Markus Gross. Optimized Spatial Hashing for Collision Detection of Deformable Objects. In Proceedings of VMV, 2003.</li>
 			</ul>
-		</td></tr>
-	</table>	
+	</div>	
 	
 </main>
 
@@ -326,7 +328,7 @@
 			{
 				let p = this.sim.particles[i];
 				let r = this.sim.particleRadius;
-				this.c.fillStyle='hsl(225,100%,40%)';
+				this.c.fillStyle='hsl(205,100%,40%)';
 				let px = this.origin.x + p.x * this.zoom;
 				let py = this.origin.y - p.y * this.zoom;
 				
@@ -357,13 +359,29 @@
 				// draw selected particle in red 
 				let p = this.sim.particles[this.selectedParticle];
 				let r = this.sim.particleRadius;
-				this.c.fillStyle = "#DD0000";	
+				this.c.fillStyle = "#CC0000";	
 				let px = this.origin.x + p.x * this.zoom;
 				let py = this.origin.y - p.y * this.zoom;				
 				this.c.beginPath();			
 				this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
 				this.c.closePath();
 				this.c.fill();
+
+				// draw neighbors in green
+				for (let j = 0; j < p.neighbors.length; j++) 
+				{
+					let nj = p.neighbors[j];
+					let p_j = this.sim.particles[nj];
+					let r = this.sim.particleRadius;
+					this.c.fillStyle='hsl(150,100%,30%)';
+					let px = this.origin.x + p_j.x * this.zoom;
+					let py = this.origin.y - p_j.y * this.zoom;
+					
+					this.c.beginPath();			
+					this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
+					this.c.closePath();
+					this.c.fill();		
+				}
 				
 				// draw a red circle to show the support radius
 				this.c.strokeStyle = "#FF0000";	
@@ -373,21 +391,7 @@
 				this.c.closePath();
 				this.c.stroke();
 				
-				// draw neighbors in green
-				for (let j = 0; j < p.neighbors.length; j++) 
-				{
-					let nj = p.neighbors[j];
-					let p_j = this.sim.particles[nj];
-					let r = this.sim.particleRadius;
-					this.c.fillStyle='hsl(130,100%,30%)';
-					let px = this.origin.x + p_j.x * this.zoom;
-					let py = this.origin.y - p_j.y * this.zoom;
-					
-					this.c.beginPath();			
-					this.c.arc(px, py, r * this.zoom, 0, Math.PI*2, true); 
-					this.c.closePath();
-					this.c.fill();		
-				}
+				
 			}
 			
 
@@ -448,10 +452,12 @@
 		
 		getMousePos(canvas, event) 
 		{
-			let rect = canvas.getBoundingClientRect();
+			const rect   = canvas.getBoundingClientRect();
+			const scaleX = canvas.width  / rect.width;   // buffer / displayed size
+			const scaleY = canvas.height / rect.height;
 			return {
-				x: event.clientX - rect.left,
-				y: event.clientY - rect.top
+				x: (event.clientX - rect.left) * scaleX,
+				y: (event.clientY - rect.top)  * scaleY
 			};
 		}
 		
