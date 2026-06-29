@@ -2,10 +2,8 @@
 <html class="no-js" lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,83 +16,82 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<title>Impulse-Based Dynamic Simulation</title>
 </head>
 <body>
+
+<header class="page-header">
+	<h1>Impulse-Based Dynamic Simulation</h1>
+</header>	
+
 <main>
-	<h1 style="text-align:center">Impulse-Based Dynamic Simulation</h1>
+	<!-- Simulation panel: canvas + controls -->
 	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="1100"> 
-		<col width="400"> 
+		<col width="75%"> 
+		<col width="25%"> 
 		<tr>
 			<td>
-				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="960" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+				</div>
 			</td>
 			<td>
-				<table>		
-				<col width="180" style="padding-right:10px"> 
-				<col width="100"> 
-				<tr>
-					<td><label>Current time</label></td>
-					<td><span id="time">0.00</span> s</td>
-				</tr>
-				<tr>
-					<td><label>Time per sim. step</label></td>
-					<td><span id="timePerStep">0.00</span> ms</td>
-				</tr>
-				<tr>
-					<td><label># particles</label></td>
-					<td><span id="numParticles">0</span></td>
-				</tr>
-				<tr>
-					<td><label># constraints</label></td>
-					<td><span id="numConstraints">0</span></td>
-				</tr>
-				<tr>
-					<td><label for="widthInput">Width</label></td>
-					<td><input onchange="gui.restart()" id="widthInput" type="number" value="40" step="1"></td>
-				</tr>
-				<tr>
-					<td><label for="heightInput">Height</label></td>
-					<td><input onchange="gui.restart()" id="heightInput" type="number" value="30" step="1"></td>
-				</tr>
-				<tr>
-					<td><label for="fixedParticlesInput"># fixed particles</label></td>
-					<td><select onchange="gui.restart()" id="fixedParticlesInput">
-					  <option value="1">1</option>
-					  <option value="2" selected="selected">2</option>
-					  <option value="4">4</option>
-					</select></td>
-				</tr>
-				<tr>
-					<td><label for="timeStepSizeInput">Time step size</label></td>
-					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.005" step="0.001"></td>
-				</tr>
-				<tr>
-					<td><label for="iterationsInput">Iterations</label></td>
-					<td><input onchange="gui.sim.numIterations=parseInt(value)" id="iterationsInput" type="number" value="2" step="1"></td>
-				</tr>
-				<tr>
-					<td><label for="gravityInput">Gravity</label></td>
-					<td><input onchange="gui.sim.gravity=parseFloat(value)" id="gravityInput" type="number" value="-9.81" step="0.01"></td>
-				</tr>
-				<tr>
-					<td><label for="massInput">Mass</label></td>
-					<td><input onchange="gui.sim.mass=parseFloat(value)" id="massInput" type="number" value="0.5" step="0.01"></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
-				</tr>
-				</table>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Current time</label>
+						<span class="stat-value"><span id="time">0.00</span> s</span>
+
+						<label>Time per sim. step</label>
+						<span class="stat-value"><span id="timePerStep">0.00</span> ms</span>
+						
+						<label># particles</label>
+						<span class="stat-value"><span id="numParticles">0</span></span>
+						
+						<label># constraints</label>
+						<span class="stat-value"><span id="numConstraints">0</span></span>
+
+						<label for="widthInput">Width</label>
+						<input onchange="gui.restart()" id="widthInput" type="number" value="40" step="1">
+
+						<label for="heightInput">Height</label>
+						<input onchange="gui.restart()" id="heightInput" type="number" value="30" step="1">
+
+						<label for="fixedParticlesInput"># fixed particles</label>
+						<select onchange="gui.restart()" id="fixedParticlesInput">
+					  		<option value="1">1</option>
+					  		<option value="2" selected="selected">2</option>
+					  		<option value="4">4</option>
+						</select>	
+
+						<label for="timeStepSizeInput">Time step size</label>
+						<input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.005" step="0.001">
+
+						<label for="iterationsInput">Iterations</label>
+						<input onchange="gui.sim.numIterations=parseInt(value)" id="iterationsInput" type="number" value="2" step="1">
+
+						<label for="gravityInput">Gravity</label>
+						<input onchange="gui.sim.gravity=parseFloat(value)" id="gravityInput" type="number" value="-9.81" step="0.01">
+
+						<label for="massInput">Mass</label>
+						<input onchange="gui.sim.mass=parseFloat(value)" id="massInput" type="number" value="0.5" step="0.01">
+						<div class="full-width">
+							<button onclick="gui.restart()" id="restart">&#9654; Restart</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.doPause()" id="Pause" class="btn-secondary">&#9646;&#9646; Pause</button>
+						</div>
+					</div>
+				</div>
 			</td>
 		</tr>
-		<tr><td>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
 			<h2>IBDS algorithm:</h2>
 				This example shows the impulse-based dynamic simulation (IBDS) method [BFS05, BS06]. 
 				IBDS is a predictor-corrector method to perform a simulation step for a constrained system. 
@@ -165,13 +162,13 @@
 				Finally, the velocity of a constrained particle is updated:
 					$$\Delta \mathbf v = \frac{1}{m} \mathbf p$$
 					
-			<h3>Velocity constraint solver loop</h3>
+			<h3>6. Velocity constraint solver loop</h3>
 				The velocity constraints $\dot C(\mathbf x) = 0$ are solved analogously to the position constraints.
 				The Lagrange multipliers are determined by solving: 
 				$$\mathbf J \mathbf M^{-1} \mathbf J^T \boldsymbol \lambda = -\mathbf {\dot C}(\mathbf x).$$ 
 				However, note that no position prediction is required since the solve is performed after the time integration step. 
 
-			<h3>Time integration</h3>
+			<h3>7. Time integration</h3>
 				The particles are advected by numerical time integration. In our case we use a symplectic Euler method:
 				$$\begin{align*}
 					\mathbf v(t + \Delta t) &= \mathbf v(t) + \frac{\Delta t}{m} \mathbf f^{\text{ext}}(t) \\
@@ -185,8 +182,7 @@
 				<li>[BFS05] Jan Bender, Dieter Finkenzeller and Alfred Schmitt. An impulse-based dynamic simulation system for VR applications. In Proceedings of Virtual Concept 2005 </li>
 			</ul>
 			
-		</td></tr>
-	</table>	
+	</div>	
 	
 </main>
 
@@ -618,10 +614,12 @@
 		
 		getMousePos(canvas, event) 
 		{
-			let rect = canvas.getBoundingClientRect();
+			const rect   = canvas.getBoundingClientRect();
+			const scaleX = canvas.width  / rect.width;   // buffer / displayed size
+			const scaleY = canvas.height / rect.height;
 			return {
-				x: event.clientX - rect.left,
-				y: event.clientY - rect.top
+				x: (event.clientX - rect.left) * scaleX,
+				y: (event.clientY - rect.top)  * scaleY
 			};
 		}
 	
