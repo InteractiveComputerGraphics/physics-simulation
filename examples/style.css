@@ -95,7 +95,7 @@ main,
 	flex-wrap: wrap;
 }
 
-.sim-canvas-wrap { flex: 1 1 auto; min-width: 0; }
+.sim-canvas-wrap { flex: 1 1 auto; min-width: 500px; }
 
 /* Let the canvas fill its flex wrapper so it shrinks alongside the controls panel */
 .sim-canvas-wrap canvas { width: 100%; }
