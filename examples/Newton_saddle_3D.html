@@ -39,9 +39,9 @@
 		<div class="controls-grid" style="width: 500px;align:left">
 			<label>Newton steps</label>
 			<p style="display:flex;align-items:center;gap:6px">
-				<button onclick="plot.changeSteps(-1)" type="button">&#8722;</button>
-				<input type="text" id="textInput" value="1" readonly style="width:36px;text-align:center">
-				<button onclick="plot.changeSteps(+1)" type="button">&#43;</button>
+				<button onclick="sim.changeSteps(-1)" style="width:30px;height:30px;font-size:16px;cursor:pointer">&#8722;</button>
+				<input type="text" id="stepsInput" value="1" readonly style="width:40px;text-align:center">
+				<button onclick="sim.changeSteps(+1)" style="width:30px;height:30px;font-size:16px;cursor:pointer">&#43;</button>
 			</p>
 			<label>x&#x2080;&thinsp;=&thinsp;</label>
 			<span id="x0Display"		  style="font-family:monospace;background:#fff;padding:2px 9px;border-radius:6px;border:1px solid #bbb;"></span>
