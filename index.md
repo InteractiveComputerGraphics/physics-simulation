@@ -17,6 +17,7 @@ I hope the examples and their documentation help you to learn something about th
 * [Newton's method](examples/Newton_solver.html)
 * [Newton's method for minimization (1D)](examples/Newton_minimization.html)
 * [Newton's method for minimization (2D)](examples/Newton_minimization_2D.html)
+* [Newton's method with backtracking line search](examples/Newton_with_backtracking_line_search.html)
 * [Newton's Method — The Saddle Point Problem](examples/Newton_saddle_3D.html)
 
 # Particles
