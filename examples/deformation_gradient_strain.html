@@ -2,10 +2,8 @@
 <html class="no-js" lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,75 +16,82 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<title>Deformation Gradient - Strain</title>
 </head>
 <body>
+
+<header class="page-header">
+	<h1>Deformation Gradient - Strain</h1>
+</header>	
+
 <main>
-	<h1 style="text-align:center">Deformation Gradient - Strain</h1>
-	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="1100"> 
-		<col width="400"> 
+	<!-- Simulation panel: canvas + controls -->
+	<table style="align_center;border-radius: 10px;padding: 10px;margin:auto">
+		<col width="60%"> 
+		<col width="40%"> 
 		<tr>
 			<td>
-				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="960" height="1150" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+				</div>
 			</td>
 			<td>
-				<table style="text-align:left">		
-				<col width="100"> 
-				<col width="100"> 
-				<tr>
-					<td><label for="translation_x">Translation - x</label></td>
-					<td><input onchange="gui.recompute()" id="translation_x" type="number" value="0.0" step="0.1"></td>
-				</tr>
-				<tr>
-					<td><label for="translation_y">Translation - y</label></td>
-					<td><input onchange="gui.recompute()" id="translation_y" type="number" value="0.0" step="0.1"></td>
-				</tr>
-				<tr>
-					<td><label for="rotation">Rotation</label></td>
-					<td><input onchange="gui.recompute()" id="rotation" type="number" value="0" step="0.1"></td>
-				</tr>
-				<tr>
-					<td><label for="scale_x">Scale - x</label></td>
-					<td><input onchange="gui.recompute()" id="scale_x" type="number" value="1.0" step="0.1"></td>
-				</tr>
-				<tr>
-					<td><label for="scale_y">Scale - y</label></td>
-					<td><input onchange="gui.recompute()" id="scale_y" type="number" value="1.0" step="0.1"></td>
-				</tr>
-				<tr>
-					<td><label for="shear_x">Shear - x</label></td>
-					<td><input onchange="gui.recompute()" id="shear_x" type="number" value="0.0" step="0.1"></td>
-				</tr>
-				<tr>
-					<td><label for="shear_y">Shear - y</label></td>
-					<td><input onchange="gui.recompute()" id="shear_y" type="number" value="0.0" step="0.1"></td>
-				</tr>
-				<tr>
-					<td colspan="2">		
-						<h4>Transformation matrix:</h4>
-						<p id="eq:T">
-						$$\mathbf{T} = \mathbf{R} \mathbf{S} \mathbf{U} = \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix}$$
-						</p>
-						<h4>Deformation gradient:</h4>
-						<p id="eq:F">
-						$$\mathbf{F} = \mathbf{D}_s \mathbf{D}_m^{-1} = \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix}$$ 						
-						</p>
-						<h4>Green strain tensor:</h4>
-						<p id="eq:E">
-						$$\mathbf{E}_\text{Green} = \frac12 (\mathbf{F}^T \mathbf{F} - \mathbf{I}) = \begin{pmatrix} 0 & 0 \\ 0 & 0 \end{pmatrix}$$
-						</p>
-						<h4>Cauchy strain tensor:</h4>
-						<p id="eq:ECauchy">
-						$$\mathbf{E}_\text{Cauchy} = \frac12 (\mathbf{F} + \mathbf{F}^T) - \mathbf{I} = \begin{pmatrix} 0 & 0 \\ 0 & 0 \end{pmatrix}$$
-						</p>						
-					</td>
-				</tr>
-				</table>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label for="translation_x">Translation - x</label>
+						<input onchange="gui.recompute()" id="translation_x" type="number" value="0.0" step="0.1">
+
+						<label for="translation_y">Translation - y</label>
+						<input onchange="gui.recompute()" id="translation_y" type="number" value="0.0" step="0.1">
+
+						<label for="rotation">Rotation</label>
+						<input onchange="gui.recompute()" id="rotation" type="number" value="0" step="0.1">
+
+						<label for="scale_x">Scale - x</label>
+						<input onchange="gui.recompute()" id="scale_x" type="number" value="1.0" step="0.1">
+
+						<label for="scale_y">Scale - y</label>
+						<input onchange="gui.recompute()" id="scale_y" type="number" value="1.0" step="0.1">
+
+						<label for="shear_x">Shear - x</label>
+						<input onchange="gui.recompute()" id="shear_x" type="number" value="0.0" step="0.1">
+
+						<label for="shear_y">Shear - y</label>
+						<input onchange="gui.recompute()" id="shear_y" type="number" value="0.0" step="0.1">
+
+						<div style="grid-column: 1 /span 2;">
+							<h4>Transformation matrix:</h4>
+							<p id="eq:T">
+							$$\mathbf{T} = \mathbf{R} \mathbf{S} \mathbf{U} = \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix}$$
+							</p>
+
+							<h4>Deformation gradient:</h4>
+							<p id="eq:F">
+							$$\mathbf{F} = \mathbf{D}_s \mathbf{D}_m^{-1} = \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix}$$ 						
+							</p>
+
+							<h4>Green strain tensor:</h4>
+							<p id="eq:E">
+							$$\mathbf{E}_\text{Green} = \frac12 (\mathbf{F}^T \mathbf{F} - \mathbf{I}) = \begin{pmatrix} 0 & 0 \\ 0 & 0 \end{pmatrix}$$
+							</p>
+
+							<h4>Cauchy strain tensor:</h4>
+							<p id="eq:ECauchy">
+							$$\mathbf{E}_\text{Cauchy} = \frac12 (\mathbf{F} + \mathbf{F}^T) - \mathbf{I} = \begin{pmatrix} 0 & 0 \\ 0 & 0 \end{pmatrix}$$
+							</p>	
+						</div>
+					</div>
+				</div>
 			</td>
 		</tr>
-		<tr><td>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">						
 			<h2>Computation of deformation gradient and strain tensor</h2>
 				<p>This example shows a single linear finite element (triangle) which is deformed by a transformation matrix. This matrix is computed as
 				$$\mathbf{T} = \mathbf{R} \mathbf{S} \mathbf{U},$$
@@ -109,9 +114,7 @@
 				
 				<p>This example shows that the deformation gradient extracts exactly the original transformation from the deformed configuration of the triangle vertices. Moreover, we can see that the linear Cauchy strain tensor is not zero for a pure rotation. This means that a rotation, which is a rigid body transformation, leads to a non-zero strain which can cause artifacts in the simulation. 
 				</p>
-			
-		</td></tr>
-	</table>	
+	</div>	
 	
 </main>
 
@@ -121,7 +124,7 @@
 		constructor()
 		{
 			// initialize values
-			this.x0 = [[0,0], [6,0], [3,5]];
+			this.x0 = [[-3,-1.5], [3,-1.5], [0,3.5]];
 			this.x = [[0,0], [6,0], [3,5]];
 			this.T = [[1,0], [0,1]];
 			this.F = [[1,0], [0,1]];	
