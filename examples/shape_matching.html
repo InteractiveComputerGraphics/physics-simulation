@@ -2,10 +2,8 @@
 <html class="no-js" lang="en">
 <head>
 	<meta charset="utf-8">
-	<style>
-		body {font-family: Helvetica, sans-serif;}
-		table {background-color:#CCDDEE;text-align:left}
-	</style>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
 	<script type="text/x-mathjax-config">
 	  MathJax.Hub.Config({
 		extensions: ["tex2jax.js"],
@@ -18,59 +16,64 @@
 		"HTML-CSS": { fonts: ["TeX"] }
 	  });
 	</script>
-	<script type="text/javascript" aync src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<title>Shape Matching</title>
 </head>
 <body>
+
+<header class="page-header">
+	<h1>Shape Matching</h1>
+</header>	
+
 <main>
-	<h1 style="text-align:center">Shape Matching</h1>
+	<!-- Simulation panel: canvas + controls -->
 	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
-		<col width="1100"> 
-		<col width="400"> 
+		<col width="75%"> 
+		<col width="25%"> 
 		<tr>
 			<td>
-				<canvas id="simCanvas" width="1024" height="768" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="960" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+				</div>
 			</td>
 			<td>
-				<table>		
-				<col width="180" style="padding-right:10px"> 
-				<col width="100"> 
-				<tr>
-					<td><label>Current time</label></td>
-					<td><span id="time">0.00</span> s</td>
-				</tr>
-				<tr>
-					<td><label>Time per sim. step</label></td>
-					<td><span id="timePerStep">0.00</span> ms</td>
-				</tr>
-				<tr>
-					<td><label for="timeStepSizeInput">Time step size</label></td>
-					<td><input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.01" step="0.001"></td>
-				</tr>
-				<tr>
-					<td><label for="stiffnessInput">Stiffness</label></td>
-					<td><input onchange="gui.sim.stiffness=parseFloat(value)" id="stiffnessInput" type="number" value="0.02" step="0.1"></td>
-				</tr>
-				<tr>
-					<td><label for="simulateMotion">Simulate motion</label></td>
-					<td><input onchange="gui.simulateMotion=this.checked" id="simulateMotion" type="checkbox" checked ></td>
-				</tr>
-				<tr>
-					<td><label for="renderGoalPos">Render goal positions</label></td>
-					<td><input onchange="gui.renderGoalPos=this.checked" id="renderGoalPos" type="checkbox"></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.restart()" type="button" id="restart">Restart</button></td>
-				</tr>
-				<tr>
-					<td></td>
-					<td><button onclick="gui.doPause()" type="button" id="Pause">Pause</button></td>
-				</tr>
-				</table>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Current time</label>
+						<span class="stat-value"><span id="time">0.00</span> s</span>
+
+						<label>Time per sim. step</label>
+						<span class="stat-value"><span id="timePerStep">0.00</span> ms</span>
+						
+						<label for="timeStepSizeInput">Time step size</label>
+						<input onchange="gui.sim.timeStepSize=parseFloat(value)" id="timeStepSizeInput" type="number" value="0.01" step="0.001">
+
+						<label for="stiffnessInput">Stiffness</label>
+						<input onchange="gui.sim.stiffness=parseFloat(value)" id="stiffnessInput" type="number" value="0.02" step="0.1">
+
+						<label for="simulateMotion">Simulate motion</label>
+						<input onchange="gui.simulateMotion=this.checked" id="simulateMotion" type="checkbox" checked >
+
+						<label for="renderGoalPos">Render goal positions</label>
+						<input onchange="gui.renderGoalPos=this.checked" id="renderGoalPos" type="checkbox">
+
+						<div class="full-width">
+							<button onclick="gui.restart()" id="restart">&#9654; Restart</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.doPause()" id="Pause" class="btn-secondary">&#9646;&#9646; Pause</button>
+						</div>
+					</div>
+				</div>
 			</td>
 		</tr>
-		<tr><td>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
 			<h2>Shape Matching algorithm:</h2>
 				This example shows the shape matching simulation method for deformable solids introduced by Müller et al. [MHTG05, BMM17].
 				<ol>
@@ -165,8 +168,7 @@
 				<li>[BMM17] Jan Bender, Matthias Müller, Miles Macklin. A Survey on Position Based Dynamics, 2017. Eurographics Tutorials, 2017</li>
 			</ul>
 			
-		</td></tr>
-	</table>	
+	</div>	
 	
 </main>
 
@@ -631,10 +633,12 @@
 		
 		getMousePos(canvas, event) 
 		{
-			let rect = canvas.getBoundingClientRect();
+			const rect   = canvas.getBoundingClientRect();
+			const scaleX = canvas.width  / rect.width;   // buffer / displayed size
+			const scaleY = canvas.height / rect.height;
 			return {
-				x: (event.clientX - rect.left) * canvas.width  / rect.width,
-				y: (event.clientY - rect.top)  * canvas.height / rect.height
+				x: (event.clientX - rect.left) * scaleX,
+				y: (event.clientY - rect.top)  * scaleY
 			};
 		}
 	
