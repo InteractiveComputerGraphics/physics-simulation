@@ -10,6 +10,7 @@ I hope the examples and their documentation help you to learn something about th
 
 # General 
 
+* [Barycentric coordinates](examples/barycentric_coordinates.html)
 * [Heat equation](examples/heat_equation.html)
 
 # Newton's method 

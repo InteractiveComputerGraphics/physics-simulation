@@ -1,0 +1,534 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Barycentric Coordinates</title>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>Barycentric Coordinates</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<table style="align_center;border-radius: 10px;padding: 10px;margin:auto">
+		<col width="60%">
+		<col width="40%">
+		<tr>
+			<td>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="700" height="550" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+				</div>
+			</td>
+			<td>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<p style="font-size:0.9em;">Drag the yellow point <strong>P</strong> or any colored vertex to explore.</p>
+
+					<div class="controls-grid">
+						<div style="grid-column: 1 / span 2;">
+							<h4>Decomposition:</h4>
+							<p>$$\mathbf{P} = \lambda_1\,\mathbf{P}_1 + \lambda_2\,\mathbf{P}_2 + \lambda_3\,\mathbf{P}_3$$</p>
+
+							<h4>Barycentric coordinates:</h4>
+							<table style="border-collapse:collapse;width:100%;margin:4px 0 8px 0;">
+								<tr>
+									<td style="padding:3px 0;">
+										<span style="display:inline-block;width:14px;height:14px;background:#DD3333;border-radius:50%;border:1px solid #333;vertical-align:middle;margin-right:6px;"></span>
+										<strong>&#955;&#8321;&nbsp;=</strong>
+									</td>
+									<td style="padding-left:10px;">
+										<span id="val:l1" style="color:#DD3333;font-weight:bold;font-size:1.15em;">0.3333</span>
+									</td>
+								</tr>
+								<tr>
+									<td style="padding:3px 0;">
+										<span style="display:inline-block;width:14px;height:14px;background:#33AA33;border-radius:50%;border:1px solid #333;vertical-align:middle;margin-right:6px;"></span>
+										<strong>&#955;&#8322;&nbsp;=</strong>
+									</td>
+									<td style="padding-left:10px;">
+										<span id="val:l2" style="color:#33AA33;font-weight:bold;font-size:1.15em;">0.3333</span>
+									</td>
+								</tr>
+								<tr>
+									<td style="padding:3px 0;">
+										<span style="display:inline-block;width:14px;height:14px;background:#3366DD;border-radius:50%;border:1px solid #333;vertical-align:middle;margin-right:6px;"></span>
+										<strong>&#955;&#8323;&nbsp;=</strong>
+									</td>
+									<td style="padding-left:10px;">
+										<span id="val:l3" style="color:#3366DD;font-weight:bold;font-size:1.15em;">0.3334</span>
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2" style="border-top:1px solid #ccc;padding-top:7px;padding-bottom:2px;">
+										<strong>&#955;&#8321; + &#955;&#8322; + &#955;&#8323;&nbsp;=&nbsp;<span id="val:sum">1.0000</span></strong>
+									</td>
+								</tr>
+							</table>
+
+							<p id="inside_status" style="font-weight:bold;color:green;margin-top:6px;">P is inside the triangle</p>
+
+							<p style="font-size:0.82em;color:#555;margin-top:12px;">
+								Each colored region is the sub-triangle opposite the vertex of the same color.
+								Its area as a fraction of the total triangle area equals the corresponding barycentric coordinate.
+							</p>
+
+							<button onclick="gui.reset()" style="margin-top:10px;padding:5px 14px;cursor:pointer;border-radius:5px;">Reset</button>
+						</div>
+					</div>
+				</div>
+			</td>
+		</tr>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>Computation of Barycentric Coordinates</h2>
+
+		<p>
+		Barycentric coordinates express any point $\mathbf{P}$ in the plane as a weighted combination of the three vertices of a reference triangle.
+		They are a fundamental tool in computer graphics and physical simulation:
+		they enable smooth interpolation of vertex attributes (colors, normals, texture coordinates),
+		efficient point-in-triangle tests, and serve as the shape functions of linear finite elements.
+		</p>
+
+		<h3>Definition</h3>
+		<p>
+		Given a triangle with vertices $\mathbf{P}_1$, $\mathbf{P}_2$, $\mathbf{P}_3$, the <em>barycentric coordinates</em>
+		$(\lambda_1, \lambda_2, \lambda_3)$ of a point $\mathbf{P}$ are the unique real numbers satisfying
+		$$\mathbf{P} = \lambda_1\,\mathbf{P}_1 + \lambda_2\,\mathbf{P}_2 + \lambda_3\,\mathbf{P}_3$$
+		subject to the normalization constraint
+		$$\lambda_1 + \lambda_2 + \lambda_3 = 1.$$
+		The constraint makes the representation unique.
+		At vertex $\mathbf{P}_i$ the coordinate $\lambda_i = 1$ while the other two are zero.
+		At the centroid $\frac{1}{3}(\mathbf{P}_1+\mathbf{P}_2+\mathbf{P}_3)$ all three coordinates equal $\frac{1}{3}$.
+		</p>
+
+		<h3>Derivation via a Linear System</h3>
+		<p>
+		To compute $\lambda_2$ and $\lambda_3$ we substitute the constraint $\lambda_1 = 1 - \lambda_2 - \lambda_3$ into the definition:
+		$$\mathbf{P} = \mathbf{P}_1 + \lambda_2\,(\mathbf{P}_2 - \mathbf{P}_1) + \lambda_3\,(\mathbf{P}_3 - \mathbf{P}_1).$$
+		Rearranging gives the $2 \times 2$ linear system
+		$$\underbrace{\begin{pmatrix} \mathbf{P}_2 - \mathbf{P}_1 & \mathbf{P}_3 - \mathbf{P}_1 \end{pmatrix}}_{\displaystyle\mathbf{M}}
+		\begin{pmatrix}\lambda_2\\\lambda_3\end{pmatrix} = \mathbf{P} - \mathbf{P}_1,$$
+		where $\mathbf{M}$ is the $2\times 2$ matrix whose columns are the edge vectors emanating from $\mathbf{P}_1$.
+		The matrix $\mathbf{M}$ is invertible as long as the triangle is non-degenerate (i.e.&nbsp;has positive area).
+		Solving the system yields
+		$$\begin{pmatrix}\lambda_2\\\lambda_3\end{pmatrix} = \mathbf{M}^{-1}(\mathbf{P} - \mathbf{P}_1), \qquad \lambda_1 = 1 - \lambda_2 - \lambda_3.$$
+		</p>
+
+		<h3>Area Interpretation</h3>
+		<p>
+		There is an elegant geometric interpretation: each barycentric coordinate equals the ratio of the signed area of the
+		sub-triangle opposite the corresponding vertex to the signed area of the whole triangle,
+		$$\lambda_1 = \frac{A(\mathbf{P},\,\mathbf{P}_2,\,\mathbf{P}_3)}{A(\mathbf{P}_1,\,\mathbf{P}_2,\,\mathbf{P}_3)}, \qquad
+		  \lambda_2 = \frac{A(\mathbf{P}_1,\,\mathbf{P},\,\mathbf{P}_3)}{A(\mathbf{P}_1,\,\mathbf{P}_2,\,\mathbf{P}_3)}, \qquad
+		  \lambda_3 = \frac{A(\mathbf{P}_1,\,\mathbf{P}_2,\,\mathbf{P})}{A(\mathbf{P}_1,\,\mathbf{P}_2,\,\mathbf{P}_3)}.$$
+		The red, green, and blue regions in the interactive demo are exactly these sub-triangles:
+		the red region (opposite the red vertex $\mathbf{P}_1$) has area proportional to $\lambda_1$,
+		the green region to $\lambda_2$, and the blue region to $\lambda_3$.
+		Because the three sub-triangles partition the whole triangle, their areas always sum to the total, confirming $\lambda_1+\lambda_2+\lambda_3=1$.
+		</p>
+
+		<p>
+		The <em>signed</em> area of a triangle $(\mathbf{A}, \mathbf{B}, \mathbf{C})$ in 2D is given by the cross product magnitude
+		$$A(\mathbf{A}, \mathbf{B}, \mathbf{C}) = \frac{1}{2}\det\!\begin{pmatrix}\mathbf{B}-\mathbf{A} & \mathbf{C}-\mathbf{A}\end{pmatrix}
+		= \frac{1}{2}\bigl[(B_x - A_x)(C_y - A_y) - (C_x - A_x)(B_y - A_y)\bigr].$$
+		Using <em>signed</em> areas means that when $\mathbf{P}$ moves outside the triangle, the winding of one or more sub-triangles reverses,
+		automatically making the corresponding $\lambda_i$ negative.
+		This is consistent with the linear system approach, which also yields negative values outside the triangle.
+		</p>
+
+		<h3>Inside/Outside Test</h3>
+		<p>
+		A key property is that a point lies <em>inside</em> the triangle if and only if all three barycentric coordinates are non-negative:
+		$$\mathbf{P} \text{ is inside the triangle} \iff \lambda_1 \ge 0,\quad \lambda_2 \ge 0,\quad \lambda_3 \ge 0.$$
+		A coordinate equals zero precisely when $\mathbf{P}$ lies on the opposite edge.
+		Drag the yellow point $\mathbf{P}$ outside the triangle in the demo above to observe one or more coordinates turn negative.
+		This gives a very efficient point-in-triangle test used in ray-triangle intersection, rasterization, and collision detection.
+		</p>
+
+		<h3>Attribute Interpolation</h3>
+		<p>
+		Any scalar or vector quantity $q$ assigned to the triangle vertices (e.g.&nbsp;color, normal, texture coordinate, temperature) can be
+		smoothly interpolated at any point $\mathbf{P}$ using
+		$$q(\mathbf{P}) = \lambda_1\,q_1 + \lambda_2\,q_2 + \lambda_3\,q_3.$$
+		This interpolation is linear and exact at the vertices: $q(\mathbf{P}_i) = q_i$.
+		In the demo, vertex $\mathbf{P}_1$ is colored red, $\mathbf{P}_2$ green, and $\mathbf{P}_3$ blue;
+		the shading inside the triangle is precisely this weighted blend of the three colors.
+		In linear finite element methods (FEM), the barycentric coordinates act directly as the element <em>shape functions</em>:
+		displacements, pressures, or temperatures within each triangle are interpolated exactly this way.
+		</p>
+	</div>
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Simulation
+	{
+		constructor()
+		{
+			// Triangle vertices in world space
+			this.vertices = [[-3.0, -2.0], [3.0, -2.0], [0.0, 3.0]];
+			// Query point — start near centroid
+			this.p = [0.0, 0.5];
+			// Barycentric coordinates
+			this.lambda = [1/3, 1/3, 1/3];
+			this.computeBarycentricCoords();
+		}
+
+		// Returns 2 * signed area of triangle (A, B, C)
+		// (avoids two divisions by 2 when computing ratios)
+		signedArea2x(A, B, C)
+		{
+			return (B[0] - A[0]) * (C[1] - A[1]) - (C[0] - A[0]) * (B[1] - A[1]);
+		}
+
+		computeBarycentricCoords()
+		{
+			const v = this.vertices;
+			const p = this.p;
+			const totalArea2x = this.signedArea2x(v[0], v[1], v[2]);
+
+			if (Math.abs(totalArea2x) < 1e-10)
+			{
+				this.lambda = [1/3, 1/3, 1/3];
+				return;
+			}
+
+			this.lambda[0] = this.signedArea2x(p,    v[1], v[2]) / totalArea2x;
+			this.lambda[1] = this.signedArea2x(v[0], p,    v[2]) / totalArea2x;
+			this.lambda[2] = this.signedArea2x(v[0], v[1], p   ) / totalArea2x;
+		}
+	}
+
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c      = this.canvas.getContext("2d");
+			this.origin = { x: this.canvas.width / 2, y: this.canvas.height / 2 };
+			this.zoom   = 70;
+			this.dragging = null; // null | 0 (point P) | 1..3 (vertices)
+			this.sim    = new Simulation();
+
+			this.canvas.addEventListener("mousedown",  this.mousedown.bind(this));
+			this.canvas.addEventListener("mousemove",  this.mousemove.bind(this));
+			this.canvas.addEventListener("mouseup",    this.mouseup.bind(this));
+			this.canvas.addEventListener("mouseleave", this.mouseup.bind(this));
+			this.canvas.addEventListener("wheel",      this.wheel.bind(this), { passive: false });
+			this.canvas.addEventListener("touchstart", this.touchstart.bind(this), { passive: false });
+			this.canvas.addEventListener("touchmove",  this.touchmove.bind(this),  { passive: false });
+			this.canvas.addEventListener("touchend",   this.mouseup.bind(this));
+		}
+
+		// ── Coordinate conversion ─────────────────────────────────────────────
+
+		toCanvas(worldPt)
+		{
+			return [
+				this.origin.x + worldPt[0] * this.zoom,
+				this.origin.y - worldPt[1] * this.zoom
+			];
+		}
+
+		toWorld(canvasPt)
+		{
+			return [
+				 (canvasPt[0] - this.origin.x) / this.zoom,
+				-(canvasPt[1] - this.origin.y) / this.zoom
+			];
+		}
+
+		getEventPos(event)
+		{
+			const rect   = this.canvas.getBoundingClientRect();
+			const scaleX = this.canvas.width  / rect.width;
+			const scaleY = this.canvas.height / rect.height;
+			return [
+				(event.clientX - rect.left) * scaleX,
+				(event.clientY - rect.top)  * scaleY
+			];
+		}
+
+		// ── Hit testing ───────────────────────────────────────────────────────
+
+		findDraggable(mp)
+		{
+			const THRESHOLD = 18;
+			// Check query point first (drawn on top)
+			const cp = this.toCanvas(this.sim.p);
+			if (Math.hypot(cp[0] - mp[0], cp[1] - mp[1]) < THRESHOLD) return 0;
+			// Check vertices
+			for (let i = 0; i < 3; i++)
+			{
+				const cv = this.toCanvas(this.sim.vertices[i]);
+				if (Math.hypot(cv[0] - mp[0], cv[1] - mp[1]) < THRESHOLD) return i + 1;
+			}
+			return null;
+		}
+
+		// ── Mouse / touch events ──────────────────────────────────────────────
+
+		mousedown(event)
+		{
+			this.dragging = this.findDraggable(this.getEventPos(event));
+		}
+
+		mousemove(event)
+		{
+			const mp = this.getEventPos(event);
+
+			if (this.dragging !== null)
+			{
+				this.canvas.style.cursor = 'grabbing';
+				const wp = this.toWorld(mp);
+				if (this.dragging === 0)
+					this.sim.p = wp;
+				else
+					this.sim.vertices[this.dragging - 1] = wp;
+				this.sim.computeBarycentricCoords();
+				this.updateDisplay();
+				this.draw();
+			}
+			else
+			{
+				this.canvas.style.cursor = this.findDraggable(mp) !== null ? 'grab' : 'default';
+			}
+		}
+
+		mouseup()
+		{
+			this.dragging = null;
+			this.canvas.style.cursor = 'default';
+		}
+
+		touchstart(event)
+		{
+			event.preventDefault();
+			if (event.touches.length > 0)
+				this.dragging = this.findDraggable(this.getEventPos(event.touches[0]));
+		}
+
+		touchmove(event)
+		{
+			event.preventDefault();
+			if (this.dragging === null || event.touches.length === 0) return;
+			const wp = this.toWorld(this.getEventPos(event.touches[0]));
+			if (this.dragging === 0)
+				this.sim.p = wp;
+			else
+				this.sim.vertices[this.dragging - 1] = wp;
+			this.sim.computeBarycentricCoords();
+			this.updateDisplay();
+			this.draw();
+		}
+
+		wheel(event)
+		{
+			event.preventDefault();
+			this.zoom += event.deltaY * -0.05;
+			if (this.zoom < 10) this.zoom = 10;
+			this.draw();
+		}
+
+		// ── Reset ─────────────────────────────────────────────────────────────
+
+		reset()
+		{
+			this.sim.vertices = [[-3.0, -2.0], [3.0, -2.0], [0.0, 3.0]];
+			this.sim.p        = [0.0, 0.5];
+			this.sim.computeBarycentricCoords();
+			this.updateDisplay();
+			this.draw();
+		}
+
+		// ── Display update ────────────────────────────────────────────────────
+
+		updateDisplay()
+		{
+			const l = this.sim.lambda;
+			document.getElementById("val:l1").textContent  = l[0].toFixed(4);
+			document.getElementById("val:l2").textContent  = l[1].toFixed(4);
+			document.getElementById("val:l3").textContent  = l[2].toFixed(4);
+			document.getElementById("val:sum").textContent = (l[0] + l[1] + l[2]).toFixed(4);
+
+			const inside = l[0] >= -1e-9 && l[1] >= -1e-9 && l[2] >= -1e-9;
+			const el = document.getElementById("inside_status");
+			el.textContent  = inside ? "P is inside the triangle" : "P is outside the triangle";
+			el.style.color  = inside ? "green" : "#CC2200";
+		}
+
+		// ── Drawing helpers ───────────────────────────────────────────────────
+
+		fillTriangle(a, b, c, color, alpha)
+		{
+			this.c.globalAlpha = alpha;
+			this.c.fillStyle   = color;
+			this.c.beginPath();
+			this.c.moveTo(a[0], a[1]);
+			this.c.lineTo(b[0], b[1]);
+			this.c.lineTo(c[0], c[1]);
+			this.c.closePath();
+			this.c.fill();
+			this.c.globalAlpha = 1.0;
+		}
+
+		// ── Main draw ─────────────────────────────────────────────────────────
+
+		draw()
+		{
+			const c = this.c;
+			c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+			const v   = this.sim.vertices;
+			const p   = this.sim.p;
+			const lam = this.sim.lambda;
+
+			const cv = v.map(pt => this.toCanvas(pt));
+			const cp = this.toCanvas(p);
+
+			const COL1 = "#DD3333";  // red   — P1
+			const COL2 = "#33AA33";  // green — P2
+			const COL3 = "#3366DD";  // blue  — P3
+			const COLP = "#FFCC00";  // yellow — query point P
+
+			// ── Draw sub-triangle fills ───────────────────────────────────────
+			// λ1 region: sub-triangle (P, P2, P3)  — red,   associated with P1
+			this.fillTriangle(cp, cv[1], cv[2], COL1, 0.30);
+			// λ2 region: sub-triangle (P1, P, P3)  — green, associated with P2
+			this.fillTriangle(cv[0], cp, cv[2], COL2, 0.30);
+			// λ3 region: sub-triangle (P1, P2, P)  — blue,  associated with P3
+			this.fillTriangle(cv[0], cv[1], cp, COL3, 0.30);
+
+			// ── Dashed lines from P to each vertex ────────────────────────────
+			c.strokeStyle = "#777777";
+			c.setLineDash([6, 4]);
+			c.lineWidth   = 1.5;
+			for (let i = 0; i < 3; i++)
+			{
+				c.beginPath();
+				c.moveTo(cp[0],    cp[1]);
+				c.lineTo(cv[i][0], cv[i][1]);
+				c.stroke();
+			}
+			c.setLineDash([]);
+
+			// ── Triangle outline ──────────────────────────────────────────────
+			c.strokeStyle = "#333333";
+			c.lineWidth   = 2.5;
+			c.beginPath();
+			c.moveTo(cv[0][0], cv[0][1]);
+			c.lineTo(cv[1][0], cv[1][1]);
+			c.lineTo(cv[2][0], cv[2][1]);
+			c.closePath();
+			c.stroke();
+
+			// ── Lambda labels inside sub-triangles ────────────────────────────
+			const subCentroids = [
+				[(cp[0]    + cv[1][0] + cv[2][0]) / 3, (cp[1]    + cv[1][1] + cv[2][1]) / 3],
+				[(cv[0][0] + cp[0]    + cv[2][0]) / 3, (cv[0][1] + cp[1]    + cv[2][1]) / 3],
+				[(cv[0][0] + cv[1][0] + cp[0]   ) / 3, (cv[0][1] + cv[1][1] + cp[1]   ) / 3]
+			];
+			const lamCols   = [COL1, COL2, COL3];
+			const lamLabels = ["\u03BB\u2081", "\u03BB\u2082", "\u03BB\u2083"]; // λ₁ λ₂ λ₃
+
+			c.font         = "bold 13px Arial";
+			c.textAlign    = "center";
+			c.textBaseline = "middle";
+			for (let i = 0; i < 3; i++)
+			{
+				const sc   = subCentroids[i];
+				const dist = Math.hypot(sc[0] - cp[0], sc[1] - cp[1]);
+				if (dist > 22) // skip if P is very close to centroid of sub-tri
+				{
+					c.fillStyle = lamCols[i];
+					c.fillText(lamLabels[i] + " = " + lam[i].toFixed(3), sc[0], sc[1]);
+				}
+			}
+
+			// ── Vertex circles and labels ─────────────────────────────────────
+			const centroid    = [(cv[0][0]+cv[1][0]+cv[2][0])/3, (cv[0][1]+cv[1][1]+cv[2][1])/3];
+			const vertexCols  = [COL1, COL2, COL3];
+			const vertexNames = ["P\u2081", "P\u2082", "P\u2083"]; // P₁ P₂ P₃
+			const VTX_R       = 10;
+
+			c.lineWidth = 2;
+			for (let i = 0; i < 3; i++)
+			{
+				c.fillStyle   = vertexCols[i];
+				c.strokeStyle = "#000000";
+				c.beginPath();
+				c.arc(cv[i][0], cv[i][1], VTX_R, 0, Math.PI * 2);
+				c.closePath();
+				c.fill();
+				c.stroke();
+
+				// Label direction: away from centroid
+				const dx  = cv[i][0] - centroid[0];
+				const dy  = cv[i][1] - centroid[1];
+				const len = Math.hypot(dx, dy);
+				const nx  = dx / len;
+				const ny  = dy / len;
+
+				c.fillStyle    = "#111111";
+				c.font         = "bold 15px Arial";
+				c.textAlign    = "center";
+				c.textBaseline = "middle";
+				c.fillText(vertexNames[i], cv[i][0] + nx * (VTX_R + 14), cv[i][1] + ny * (VTX_R + 14));
+			}
+
+			// ── Query point P ─────────────────────────────────────────────────
+			const P_R = 12;
+			c.fillStyle   = COLP;
+			c.strokeStyle = "#000000";
+			c.lineWidth   = 2.5;
+			c.beginPath();
+			c.arc(cp[0], cp[1], P_R, 0, Math.PI * 2);
+			c.closePath();
+			c.fill();
+			c.stroke();
+
+			// Label "P" to the upper-right of the circle
+			c.fillStyle    = "#111111";
+			c.font         = "bold 15px Arial";
+			c.textAlign    = "left";
+			c.textBaseline = "bottom";
+			c.fillText("P", cp[0] + P_R + 4, cp[1] - 4);
+			c.textBaseline = "middle";
+		}
+
+		// ── Entry point ───────────────────────────────────────────────────────
+
+		start()
+		{
+			this.sim.computeBarycentricCoords();
+			this.updateDisplay();
+			this.draw();
+		}
+	}
+
+	const gui = new GUI();
+	gui.start();
+</script>
+
+</body>
+</html>
