@@ -1,3 +1,3 @@
 # Physics Simulation
 
-[Web page](https://interactivecomputergraphics.github.io/physics-simulation)
+[Web page](https://learn.physics-simulation.org)
