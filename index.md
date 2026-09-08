@@ -2,7 +2,7 @@
 
 Physics simulation is an important research topic in visual computing. It has many applications ranging from such as virtual prototyping, training simulators, robotics, animation software for digital production including visual effects in film and animation movies, and computer games – just to mention a few.
 
-At [RWTH Aachen university](https://animation.rwth-aachen.de) I offer [lectures](https://animation.rwth-aachen.de/courses/) which give an introduction to state-of-the-art simulation methods for rigid bodies, deformable solids and fluids in the area of visual computing (e.g, the Finite Element Method (FEM) and the [Smoothed Particle Hydrodynamics (SPH)](https://interactivecomputergraphics.github.io/SPH-Tutorial/) approach). For the lectures I programmed several simulation examples using JavaScript.  
+At [RWTH Aachen university](https://animation.rwth-aachen.de) I offer [lectures](https://animation.rwth-aachen.de/courses/) which give an introduction to state-of-the-art simulation methods for rigid bodies, deformable solids and fluids in the area of visual computing (e.g, the Finite Element Method (FEM) and the [Smoothed Particle Hydrodynamics (SPH)](https://sph-tutorial.physics-simulation.org) approach). For the lectures I programmed several simulation examples using JavaScript.  
 
 Why JavaScript? Because everybody can directly run the examples in the browser. Moreover, I was able to add a short web page for each example which explains the method. 
 
@@ -11,6 +11,7 @@ I hope the examples and their documentation help you to learn something about th
 # General 
 
 * [Barycentric coordinates](examples/barycentric_coordinates.html)
+* [Finite differences](examples/finite_differences.html)
 * [Heat equation](examples/heat_equation.html)
 
 # Newton's method 

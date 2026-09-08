@@ -1,0 +1,373 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
+	<title>Finite difference derivatives</title>
+	<style>
+		/* the two plots should share the available width instead of
+		   using their intrinsic (fixed) Plotly size, which overflows
+		   the page's max width */
+		.plots-grid {
+			grid-template-columns: 1fr 1fr;
+			gap: 16px;
+		}
+		.plots-grid > div {
+			min-width: 0;		/* allow grid items to shrink below content size */
+			width: 100%;
+		}
+		@media (max-width: 820px) {
+			.plots-grid { grid-template-columns: 1fr; }
+		}
+	</style>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>Finite difference derivatives</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: plots + controls -->
+	<div class="card sim-panel">
+		<div class="sim-canvas-wrap">
+			<div class="plots-grid" width="100%">
+				<div id="plotOutput" style="border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+				<div id="plotOutput2" style="border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+			</div>
+		</div>
+	</div>
+	<div class="controls-panel" style="width: 100%;align:center;margin-left:auto;margin-right:auto">
+		<h3>Controls</h3>
+		<div class="controls-grid" style="width: 420px;align:left">
+			<label for="fct">Function</label>
+			<select onchange="plot.changeFunction()" id="fct" size="1">
+				<option selected="selected">Smooth polynomial</option>
+				<option>Oscillatory function</option>
+				<option>Steep transition</option>
+				<option>Non-smooth function (kink)</option>
+			</select>
+
+			<label for="x0">Evaluation point x&#8320;</label>
+			<span class="stat-value" id="x0Display">0.00</span>
+
+			<label></label>
+			<input oninput="plot.reset()" id="x0" type="range" min="-1.5" max="2.2" step="0.01" value="1.3">
+
+			<label for="hSlider">Step size h</label>
+			<span class="stat-value" id="hDisplay">1.0e-1</span>
+
+			<label></label>
+			<input oninput="plot.reset()" id="hSlider" type="range" min="-8" max="0" step="0.05" value="-1">
+
+			<label for="showForward">Show forward difference</label>
+			<input onchange="plot.reset()" id="showForward" type="checkbox" checked>
+
+			<label for="showBackward">Show backward difference</label>
+			<input onchange="plot.reset()" id="showBackward" type="checkbox">
+
+			<label for="showCentral">Show central difference</label>
+			<input onchange="plot.reset()" id="showCentral" type="checkbox" checked>
+		</div>
+	</div>
+
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>Approximating derivatives with finite differences</h2>
+		<p>Whenever the derivative $f'(x)$ of a function is not available in closed form (or is expensive to derive/implement), it can be approximated numerically from function values alone. The idea is to replace the derivative &mdash; the slope of the <em>tangent</em> &mdash; by the slope of a nearby <em>secant</em> through points that are a small distance $h$ apart. The left plot below shows the function together with the exact tangent and the secants that correspond to each formula. The right plot shows how the approximation error behaves as $h \to 0$.</p>
+
+		<h3>Forward, backward and central differences</h3>
+		<p>The three basic one-dimensional finite difference formulas are:</p>
+		$$
+		\begin{align*}
+			f'(x) &\approx \frac{f(x+h)-f(x)}{h} &&\text{(forward difference)}\\[4pt]
+			f'(x) &\approx \frac{f(x)-f(x-h)}{h} &&\text{(backward difference)}\\[4pt]
+			f'(x) &\approx \frac{f(x+h)-f(x-h)}{2h} &&\text{(central difference)}
+		\end{align*}
+		$$
+
+		<h3>Truncation error: why central differences are more accurate</h3>
+		<p>The accuracy of each formula follows directly from a Taylor expansion of $f$ around $x$:</p>
+		$$
+		\begin{align*}
+			f(x+h) &= f(x) + h f'(x) + \tfrac{h^2}{2} f''(x) + \tfrac{h^3}{6} f'''(x) + O(h^4)\\
+			f(x-h) &= f(x) - h f'(x) + \tfrac{h^2}{2} f''(x) - \tfrac{h^3}{6} f'''(x) + O(h^4)
+		\end{align*}
+		$$
+		<p>Inserting the first expansion into the forward difference formula leaves an error term proportional to $h$:</p>
+		$$\frac{f(x+h)-f(x)}{h} - f'(x) = \tfrac{h}{2} f''(x) + O(h^2) \;\Rightarrow\; \text{error} = O(h).$$
+		<p>The odd-order terms cancel when the two expansions are subtracted for the central difference, leaving an error term proportional to $h^2$ &mdash; one order more accurate for (almost) the same cost:</p>
+		$$\frac{f(x+h)-f(x-h)}{2h} - f'(x) = \tfrac{h^2}{6} f'''(x) + O(h^4) \;\Rightarrow\; \text{error} = O(h^2).$$
+
+		<h3>Rounding error: why $h$ cannot be made arbitrarily small</h3>
+		<p>The formulas above suggest choosing $h$ as small as possible. In floating point arithmetic this is not true: $f(x+h)$ and $f(x)$ are nearly equal for small $h$, so their subtraction suffers from <em>catastrophic cancellation</em>. With machine epsilon $\varepsilon \approx 2.2\times10^{-16}$ (IEEE double precision), the rounding error of a difference quotient grows like $\varepsilon/h$, so the <b>total</b> error is roughly</p>
+		$$\text{error}_\text{forward}(h) \approx \tfrac{h}{2}|f''(x)| + \tfrac{2\varepsilon}{h}|f(x)|, \qquad \text{error}_\text{central}(h) \approx \tfrac{h^2}{6}|f'''(x)| + \tfrac{\varepsilon}{h}|f(x)|.$$
+		<p>Both expressions have a minimum at an optimal step size: $h^\ast_\text{forward} \approx \sqrt{\varepsilon} \approx 1.5\times10^{-8}$ and $h^\ast_\text{central} \approx \varepsilon^{1/3} \approx 6\times10^{-6}$ (for values of $f$, $f''$, $f'''$ of order 1). This is exactly the characteristic V-shaped curve visible in the right plot: the error first drops with slope $1$ (forward) or $2$ (central) on the log-log plot, then turns around and grows again once rounding error takes over. Try dragging the step size slider all the way to the left to see the curve pass through this minimum.</p>
+
+		<h3>Some functions are harder than others</h3>
+		<p>The four test functions illustrate different failure modes:</p>
+		<ul>
+			<li><b>Smooth polynomial</b> $f(x)=x^3-2x^2+x+1$: a well-behaved baseline. Truncation error follows the theoretical $O(h)$ / $O(h^2)$ slopes closely over many orders of magnitude before rounding error takes over.</li>
+			<li><b>Oscillatory function</b> $f(x)=\sin(15x)$: higher derivatives are large ($|f'''| \le 15^3$), which inflates the constant in front of $h$ resp. $h^2$ in the truncation error. The whole error curve is shifted upward, so a <em>much smaller</em> $h$ is needed to reach the same accuracy as for the polynomial &mdash; and if $h$ is chosen too large relative to the oscillation period, the difference quotient can even get the sign of the slope wrong.</li>
+			<li><b>Steep transition</b> $f(x)=\tanh(25x)$: away from $x=0$ the function is almost flat and easy, but inside the narrow transition region the second and third derivatives are huge, so $h$ must be small <em>relative to the width of the transition</em>, not just small in absolute terms. Move $x_0$ towards $0$ and watch the error curve shift upward.</li>
+			<li><b>Non-smooth function (kink)</b> $f(x)=|x|$: at $x_0=0$ the derivative simply does not exist. No choice of $h$ helps here &mdash; forward difference always returns $+1$, backward difference always returns $-1$, and central difference always returns $0$, independent of $h$. This is a fundamentally different failure than truncation or rounding error: finite differences silently produce a number even where no derivative exists, which is an important pitfall to know about.</li>
+		</ul>
+
+		<h3>References</h3>
+		<ul>
+			<li>[LeV07] Randall J. LeVeque. Finite Difference Methods for Ordinary and Partial Differential Equations. SIAM, 2007.</li>
+		</ul>
+	</div>
+
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Plot
+	{
+		constructor()
+		{
+			// meta data (view range, default evaluation point) for every test function
+			this.functions = {
+				"Smooth polynomial": {
+					f:  x => x*x*x - 2*x*x + x + 1,
+					df: x => 3*x*x - 4*x + 1,
+					xMin: -1.5, xMax: 2.2, x0: 1.3
+				},
+				"Oscillatory function": {
+					f:  x => Math.sin(15*x),
+					df: x => 15*Math.cos(15*x),
+					xMin: -0.7, xMax: 0.7, x0: 0.25
+				},
+				"Steep transition": {
+					f:  x => Math.tanh(25*x),
+					df: x => 25*(1 - Math.tanh(25*x)*Math.tanh(25*x)),
+					xMin: -0.3, xMax: 0.3, x0: 0.03
+				},
+				"Non-smooth function (kink)": {
+					f:  x => Math.abs(x),
+					df: x => x === 0 ? NaN : Math.sign(x),
+					xMin: -1.0, xMax: 1.0, x0: 0.0
+				}
+			};
+
+			this.changeFunction();
+		}
+
+		// called when the user picks a different function: adjusts the
+		// x0 slider range to a sensible window for that function and resets
+		changeFunction()
+		{
+			let name = document.getElementById('fct').value;
+			let info = this.functions[name];
+			let x0Input = document.getElementById('x0');
+			x0Input.min = info.xMin;
+			x0Input.max = info.xMax;
+			x0Input.step = (info.xMax - info.xMin) / 400;
+			x0Input.value = info.x0;
+			this.reset();
+		}
+
+		forwardDiff(f, x, h)  { return (f(x+h) - f(x)) / h; }
+		backwardDiff(f, x, h) { return (f(x) - f(x-h)) / h; }
+		centralDiff(f, x, h)  { return (f(x+h) - f(x-h)) / (2*h); }
+
+		reset()
+		{
+			this.name = document.getElementById('fct').value;
+			this.info = this.functions[this.name];
+			this.x0 = parseFloat(document.getElementById('x0').value);
+			this.logH = parseFloat(document.getElementById('hSlider').value);
+			this.h = Math.pow(10, this.logH);
+			this.showForward = document.getElementById('showForward').checked;
+			this.showBackward = document.getElementById('showBackward').checked;
+			this.showCentral = document.getElementById('showCentral').checked;
+
+			document.getElementById('x0Display').innerHTML = this.x0.toFixed(3);
+			document.getElementById('hDisplay').innerHTML = this.h.toExponential(2);
+
+			this.plotFunction();
+			this.plotConvergence();
+		}
+
+		// left plot: function, exact tangent and the finite difference secants
+		plotFunction()
+		{
+			let info = this.info;
+			let x0 = this.x0;
+			let h = this.h;
+			let f = info.f;
+
+			let num = 400;
+			let xs = [], ys = [];
+			for (let i = 0; i <= num; i++)
+			{
+				let x = info.xMin + (info.xMax - info.xMin) * i / num;
+				xs.push(x);
+				ys.push(f(x));
+			}
+
+			let f_x0 = f(x0);
+			let df_exact = info.df(x0);
+
+			// tangent line has a fixed, human-visible length independent of h
+			let half = (info.xMax - info.xMin) * 0.12;
+			let tangent = {
+				x: [x0 - half, x0 + half],
+				y: isNaN(df_exact) ? [null, null] : [f_x0 - df_exact*half, f_x0 + df_exact*half],
+				name: "tangent (exact f'(x₀))",
+				mode: 'lines',
+				line: { color: 'rgb(0,150,0)', width: 3 }
+			};
+
+			let f_xph = f(x0 + h);
+			let f_xmh = f(x0 - h);
+
+			let forward = {
+				x: [x0, x0 + h], y: [f_x0, f_xph],
+				name: 'forward difference', mode: 'lines+markers',
+				line: { color: 'rgb(230,120,0)', dash: 'dash', width: 2 }
+			};
+			let backward = {
+				x: [x0 - h, x0], y: [f_xmh, f_x0],
+				name: 'backward difference', mode: 'lines+markers',
+				line: { color: 'rgb(180,0,180)', dash: 'dot', width: 2 }
+			};
+			let central = {
+				x: [x0 - h, x0 + h], y: [f_xmh, f_xph],
+				name: 'central difference', mode: 'lines+markers',
+				line: { color: 'rgb(0,90,220)', dash: 'dashdot', width: 2 }
+			};
+
+			let marker = {
+				x: [x0], y: [f_x0], mode: 'markers+text',
+				text: ['x₀'], textposition: 'top center',
+				marker: { color: 'black', size: 8 },
+				name: 'x₀', showlegend: false
+			};
+
+			let data = [
+				{ x: xs, y: ys, name: this.name, line: { color: 'rgb(90,90,90)' } },
+				tangent
+			];
+			if (this.showForward)  data.push(forward);
+			if (this.showBackward) data.push(backward);
+			if (this.showCentral)  data.push(central);
+			data.push(marker);
+
+			let annotations = [];
+			if (isNaN(df_exact))
+			{
+				annotations.push({
+					x: x0, y: f_x0, xref: 'x', yref: 'y',
+					text: "f is not differentiable at x₀!",
+					showarrow: true, arrowhead: 4, ax: 60, ay: -40
+				});
+			}
+
+			var layout = {
+				title: 'Function and finite difference secants',
+				autosize: true, height: 480,
+				margin: { t: 40, r: 20, b: 40, l: 50 },
+				xaxis: { range: [info.xMin, info.xMax] },
+				annotations: annotations
+			};
+
+			Plotly.newPlot('plotOutput', data, layout, { responsive: true });
+		}
+
+		// right plot: log-log convergence plot of the approximation error over h
+		plotConvergence()
+		{
+			let info = this.info;
+			let x0 = this.x0;
+			let f = info.f;
+			let df_exact = info.df(x0);
+
+			let hs = [], errF = [], errB = [], errC = [];
+			let n = 160;
+			let minFloor = 1.0e-18;		// avoid log(0) on the log axis
+			for (let i = 0; i <= n; i++)
+			{
+				let logh = -16 + 16 * i / n;		// h from 1e-16 to 1
+				let h = Math.pow(10, logh);
+				let fF = this.forwardDiff(f, x0, h);
+				let fB = this.backwardDiff(f, x0, h);
+				let fC = this.centralDiff(f, x0, h);
+				hs.push(h);
+				errF.push(Math.max(Math.abs(fF - df_exact), minFloor));
+				errB.push(Math.max(Math.abs(fB - df_exact), minFloor));
+				errC.push(Math.max(Math.abs(fC - df_exact), minFloor));
+			}
+
+			let data = [];
+			let annotations = [];
+
+			if (isNaN(df_exact))
+			{
+				annotations.push({
+					x: 0.5, y: 0.5, xref: 'paper', yref: 'paper',
+					text: "f'(x₀) does not exist —<br>no error can be defined here",
+					showarrow: false, font: { size: 13 }
+				});
+			}
+			else
+			{
+				if (this.showForward)
+					data.push({ x: hs, y: errF, name: '|forward error|', line: { color: 'rgb(230,120,0)' } });
+				if (this.showBackward)
+					data.push({ x: hs, y: errB, name: '|backward error|', line: { color: 'rgb(180,0,180)' } });
+				if (this.showCentral)
+					data.push({ x: hs, y: errC, name: '|central error|', line: { color: 'rgb(0,90,220)' } });
+
+				// reference slopes O(h) and O(h^2), anchored via numerically
+				// estimated f''(x0) / f'''(x0) so they line up with the actual data
+				let d = 1.0e-3;
+				let f2 = (f(x0+d) - 2*f(x0) + f(x0-d)) / (d*d);
+				let f3 = (f(x0+2*d) - 2*f(x0+d) + 2*f(x0-d) - f(x0-2*d)) / (2*d*d*d);
+				let refO1 = hs.map(h => Math.max(0.5*Math.abs(f2)*h, minFloor));
+				let refO2 = hs.map(h => Math.max((1/6)*Math.abs(f3)*h*h, minFloor));
+				data.push({ x: hs, y: refO1, name: 'O(h) reference', line: { color: 'rgb(150,150,150)', dash: 'dash' } });
+				data.push({ x: hs, y: refO2, name: 'O(h²) reference', line: { color: 'rgb(150,150,150)', dash: 'dot' } });
+			}
+
+			// marker for the h currently selected by the slider
+			let shapes = [{
+				type: 'line', xref: 'x', yref: 'paper',
+				x0: this.h, x1: this.h, y0: 0, y1: 1,
+				line: { color: 'rgba(0,0,0,0.4)', width: 1, dash: 'dash' }
+			}];
+
+			var layout = {
+				title: 'Error vs. step size h',
+				autosize: true, height: 480,
+				margin: { t: 40, r: 20, b: 40, l: 60 },
+				xaxis: { title: 'h', type: 'log', autorange: 'reversed' },
+				yaxis: { title: '|error|', type: 'log' },
+				shapes: shapes,
+				annotations: annotations
+			};
+
+			Plotly.newPlot('plotOutput2', data, layout, { responsive: true });
+		}
+	}
+
+	plot = new Plot();
+</script>
+
+</body>
+</html>
