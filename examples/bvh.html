@@ -1,0 +1,822 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Bounding Volume Hierarchy</title>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>Bounding Volume Hierarchy</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="70%">
+		<col width="30%">
+		<tr>
+			<td>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="960" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+					<p class="canvas-hint">Drag either mesh with the mouse; colliding triangles turn red, tested-but-clear triangles turn yellow.</p>
+				</div>
+			</td>
+			<td>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Status</label>
+						<span class="stat-value"><span id="status">-</span></span>
+
+						<label># triangles A / B</label>
+						<span class="stat-value"><span id="numTrisA">0</span> / <span id="numTrisB">0</span></span>
+
+						<label>Tree height A / B</label>
+						<span class="stat-value"><span id="treeHeightA">0</span> / <span id="treeHeightB">0</span></span>
+
+						<label>Node pairs tested</label>
+						<span class="stat-value"><span id="nodePairsTested">0</span></span>
+
+						<label>Triangle tests (BVH)</label>
+						<span class="stat-value"><span id="triTestsBVH">0</span></span>
+
+						<label>Triangle tests (brute force)</label>
+						<span class="stat-value"><span id="triTestsBF">0</span></span>
+
+						<label>Colliding pairs (BVH)</label>
+						<span class="stat-value"><span id="numCollisions">0</span></span>
+
+						<label>Colliding pairs (brute force)</label>
+						<span class="stat-value"><span id="numCollisionsBF">0</span></span>
+
+						<label>Time per step</label>
+						<span class="stat-value"><span id="timePerStep">0.00</span> ms</span>
+
+						<label for="resAInput">Mesh A resolution</label>
+						<input onchange="gui.restart()" id="resAInput" type="number" value="5" min="3" max="7" step="1">
+
+						<label for="resBInput">Mesh B resolution</label>
+						<input onchange="gui.restart()" id="resBInput" type="number" value="4" min="3" max="7" step="1">
+
+						<label for="speedInput">Speed</label>
+						<input onchange="gui.restart()" id="speedInput" type="number" value="25" min="0" step="5">
+
+						<label for="modeInput">Mode</label>
+						<select onchange="gui.setMode(this.value)" id="modeInput">
+							<option value="continuous" selected="selected">Continuous (auto-query)</option>
+							<option value="step">Step-by-step (manual)</option>
+						</select>
+
+						<label for="showInternalInput">Show internal boxes</label>
+						<input onchange="gui.showInternalBoxes = this.checked; gui.draw();" id="showInternalInput" type="checkbox" checked>
+
+						<div class="full-width">
+							<button onclick="gui.restart()" id="restart">&#9654; Restart</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.doPause()" id="Pause" class="btn-secondary">&#9646;&#9646; Pause</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.step()" id="step" class="btn-secondary">Step once</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.convergeNow()" id="convergeNow" class="btn-secondary">Converge now</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.restartTraversal()" id="restartTraversal" class="btn-secondary">Restart traversal</button>
+						</div>
+						<div class="full-width" id="stepLog" style="font-size:0.8rem;color:#4b5563;background:#f5f7ff;border:1px solid #dde3f8;border-radius:8px;padding:6px 8px;min-height:24px;"></div>
+					</div>
+				</div>
+			</td>
+		</tr>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
+			<h2>BVH-vs-BVH collision detection between two triangle meshes</h2>
+			<p>
+			Testing two triangle meshes for collision by comparing every triangle of mesh $A$ against every triangle of mesh $B$ costs $O(n_A \cdot n_B)$ &mdash; fine for two triangles, hopeless for two meshes with hundreds each. The standard solution, used for example in cloth and character collision in games and in the classic OBBTree algorithm [GLM96], builds a <b>bounding volume hierarchy (BVH) for each mesh separately</b>, then traverses <em>both trees at once</em>, discarding huge groups of triangle pairs with a single box test wherever an entire branch of one mesh cannot possibly touch a branch of the other.
+			</p>
+
+			<h3>One tree per mesh</h3>
+			<p>
+			Each mesh gets its own tree, built once over its triangles exactly as in a single-object BVH: a leaf holds one triangle and its bounding box; an internal node's box is the union of its two children's boxes. The split axis is chosen as the one along which the triangles' centroids are spread out the most (the same heuristic used for sweep-and-prune's sweep axis and for the earlier single-mesh BVH), and the triangles are split at the median along that axis, recursively, down to individual triangles.
+			</p>
+
+			<h3>Traversing two trees together</h3>
+			<p>The query here is "do these two meshes collide, and if so, which triangles?". Starting from the two roots, it proceeds as a walk over <em>pairs</em> of nodes, one from each tree:</p>
+			<ol>
+				<li>Pop a pair $(n_A, n_B)$. If their boxes do not overlap, no triangle under $n_A$ can touch any triangle under $n_B$ &mdash; prune this pair outright, discarding every triangle combination below it in one step.</li>
+				<li>If both are leaves, run an exact triangle&ndash;triangle intersection test (2D separating-axis test: check each triangle's three edge normals as a candidate separating axis; if none of the six separates them, the triangles overlap &mdash; a fixed, small set of candidate axes, in contrast to how GJK searches for such a separation via a growing simplex).</li>
+				<li>Otherwise, descend into the children of whichever node is <em>larger</em> (by box area), keeping the other side fixed. This keeps both subtrees shrinking roughly evenly instead of always drilling into the same mesh.</li>
+			</ol>
+			<p>
+			Each triangle is colored by what happened to it: <span style="color:#e61e1e">red</span> means it was involved in a detected collision, <span style="color:#ca8a04">yellow</span> means it was tested exactly but found not to overlap, and its normal mesh color means the traversal never even reached it &mdash; typically the large majority of triangles, even for meshes with dozens of triangles each. Toggle "Show internal boxes" to also see which node boxes were pruned (amber) versus descended into (blue) during the same pass.
+			</p>
+
+			<h3>Refitting a rigid mesh needs no rebuilding</h3>
+			<p>
+			Both meshes only translate and rotate rigidly here (no deformation), so each frame the tree is kept valid the same way as a single moving object's BVH: <b>refit</b> every node's box bottom-up from its (now moved) children, without touching the tree's topology. Unlike a scene of independently drifting objects, a single rigid mesh's own triangles never change position relative to each other, so refitting alone keeps every box exactly as tight as a fresh top-down build would &mdash; there is no quality to lose, and hence nothing to rebuild, as long as the mesh stays rigid. This stops being true the moment a mesh actually <em>deforms</em> (as in a real cloth or soft-body simulation), where periodic rebuilding &mdash; or a hierarchy specifically designed to tolerate some deformation, e.g. [vdB97] &mdash; becomes necessary again.
+			</p>
+
+			<h3>Properties</h3>
+			<ul>
+				<li><b>Far fewer triangle tests</b> than brute force in typical (non-degenerate) configurations &mdash; compare the "Triangle tests (BVH)" and "Triangle tests (brute force)" counters directly, especially once the two meshes are far apart.</li>
+				<li><b>Correct in the worst case too:</b> if the meshes deeply interpenetrate almost everywhere, the traversal degrades towards brute force, since there is little to prune &mdash; the same caveat every hierarchical pruning method in this series shares.</li>
+				<li><b>Validated live:</b> a brute-force pass over every triangle pair runs alongside on every step purely to double-check the two methods agree; the "Colliding pairs" counts should always match.</li>
+				<li><b>Generalizes beyond pairs of rigid meshes:</b> the same two-tree traversal is how self-collision within a single deforming mesh is typically handled too (traverse the mesh's tree against itself, skipping pairs of triangles that share a vertex).</li>
+			</ul>
+
+			<h3>References</h3>
+			<ul>
+			<li>[GLM96] Stefan Gottschalk, Ming C. Lin, Dinesh Manocha. OBBTree: A Hierarchical Structure for Rapid Interference Detection. In Proceedings of SIGGRAPH, 1996.</li>
+			<li>[vdB97] Gino van den Bergen. Efficient Collision Detection of Complex Deformable Models using AABB Trees. Journal of Graphics Tools, 1997.</li>
+			<li>[Eri04] Christer Ericson. Real-Time Collision Detection. Morgan Kaufmann, 2004.</li>
+			</ul>
+	</div>
+
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	// ---- small helpers ----
+	function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y }; }
+	function dot(a, b)  { return a.x * b.x + a.y * b.y; }
+	function len(a)     { return Math.sqrt(dot(a, a)); }
+
+	function unionBox(a, b)
+	{
+		return {
+			minX: Math.min(a.minX, b.minX), maxX: Math.max(a.maxX, b.maxX),
+			minY: Math.min(a.minY, b.minY), maxY: Math.max(a.maxY, b.maxY)
+		};
+	}
+	function boxesOverlap(a, b) { return a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY; }
+	function boxArea(b) { return (b.maxX - b.minX) * (b.maxY - b.minY); }
+	function triBox(tri)
+	{
+		return {
+			minX: Math.min(tri[0].x, tri[1].x, tri[2].x), maxX: Math.max(tri[0].x, tri[1].x, tri[2].x),
+			minY: Math.min(tri[0].y, tri[1].y, tri[2].y), maxY: Math.max(tri[0].y, tri[1].y, tri[2].y)
+		};
+	}
+	function setsEqual(a, b)
+	{
+		if (a.size !== b.size) return false;
+		for (let x of a) if (!b.has(x)) return false;
+		return true;
+	}
+
+	function pointInTriangle(p, a, b, c)
+	{
+		let sign = (p1, p2, p3) => (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+		let d1 = sign(p, a, b), d2 = sign(p, b, c), d3 = sign(p, c, a);
+		let hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+		let hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+		return !(hasNeg && hasPos);
+	}
+
+	// exact 2D triangle-triangle overlap test via the separating axis theorem:
+	// try each triangle's three edge normals as a candidate separating axis
+	function triangleIntersect(triA, triB)
+	{
+		function project(tri, axis)
+		{
+			let d0 = dot(tri[0], axis), d1 = dot(tri[1], axis), d2 = dot(tri[2], axis);
+			return [Math.min(d0, d1, d2), Math.max(d0, d1, d2)];
+		}
+		for (let tri of [triA, triB])
+		{
+			for (let i = 0; i < 3; i++)
+			{
+				let p1 = tri[i], p2 = tri[(i + 1) % 3];
+				let axis = { x: -(p2.y - p1.y), y: (p2.x - p1.x) };
+				let [minA, maxA] = project(triA, axis);
+				let [minB, maxB] = project(triB, axis);
+				if (maxA < minB || maxB < minA)
+					return false;	// separating axis found -> no overlap
+			}
+		}
+		return true;
+	}
+
+	// ---- mesh generation: a jittered grid of vertices, two triangles per quad ----
+	function generateMesh(nx, ny, cellSize)
+	{
+		let verts = [];
+		for (let j = 0; j < ny; j++)
+			for (let i = 0; i < nx; i++)
+			{
+				let jx = (Math.random() - 0.5) * cellSize * 0.3;
+				let jy = (Math.random() - 0.5) * cellSize * 0.3;
+				verts.push({ x: (i - (nx - 1) / 2) * cellSize + jx, y: (j - (ny - 1) / 2) * cellSize + jy });
+			}
+		let idx = (i, j) => j * nx + i;
+		let tris = [];
+		for (let j = 0; j < ny - 1; j++)
+			for (let i = 0; i < nx - 1; i++)
+			{
+				tris.push([idx(i, j), idx(i + 1, j), idx(i, j + 1)]);
+				tris.push([idx(i + 1, j), idx(i + 1, j + 1), idx(i, j + 1)]);
+			}
+		return { verts, tris };
+	}
+
+	// ---- BVH over a mesh's triangles ----
+
+	function chooseSplitAxis(items)
+	{
+		let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+		for (let it of items)
+		{
+			minX = Math.min(minX, it.centroid.x); maxX = Math.max(maxX, it.centroid.x);
+			minY = Math.min(minY, it.centroid.y); maxY = Math.max(maxY, it.centroid.y);
+		}
+		return (maxX - minX) >= (maxY - minY) ? 'x' : 'y';
+	}
+
+	function buildMeshBVH(verts, triList)
+	{
+		let items = triList.map((v, id) => ({
+			id, v,
+			centroid: { x: (verts[v[0]].x + verts[v[1]].x + verts[v[2]].x) / 3, y: (verts[v[0]].y + verts[v[1]].y + verts[v[2]].y) / 3 }
+		}));
+		let counter = { n: 0 };
+		function build(objs, depth)
+		{
+			if (objs.length === 1)
+			{
+				let t = objs[0];
+				return { id: counter.n++, leaf: true, triId: t.id, v: t.v, depth, leafCount: 1 };
+			}
+			let axis = chooseSplitAxis(objs);
+			let sorted = objs.slice().sort((a, b) => axis === 'x' ? a.centroid.x - b.centroid.x : a.centroid.y - b.centroid.y);
+			let mid = Math.floor(sorted.length / 2);
+			let left = build(sorted.slice(0, mid), depth + 1);
+			let right = build(sorted.slice(mid), depth + 1);
+			return { id: counter.n++, leaf: false, left, right, depth, leafCount: left.leafCount + right.leafCount };
+		}
+		return build(items, 0);
+	}
+
+	// bottom-up: recompute every node's world-space box (and each leaf's world triangle)
+	function refitMeshBVH(node, worldVerts)
+	{
+		if (node.leaf)
+		{
+			node.triangle = [worldVerts[node.v[0]], worldVerts[node.v[1]], worldVerts[node.v[2]]];
+			node.box = triBox(node.triangle);
+			return node.box;
+		}
+		node.box = unionBox(refitMeshBVH(node.left, worldVerts), refitMeshBVH(node.right, worldVerts));
+		return node.box;
+	}
+
+	function treeHeight(node) { return node.leaf ? 0 : 1 + Math.max(treeHeight(node.left), treeHeight(node.right)); }
+
+	function collectLeaves(node, out)
+	{
+		if (node.leaf) { out.push(node); return; }
+		collectLeaves(node.left, out);
+		collectLeaves(node.right, out);
+	}
+
+	// ---- two-tree traversal: walk pairs of nodes, one from each mesh's tree ----
+
+	function upgradeStatus(map, id, status)
+	{
+		const priority = { pruned: 1, active: 2 };
+		let cur = map.get(id);
+		if (!cur || priority[status] > priority[cur])
+			map.set(id, status);
+	}
+
+	function pairTraverseInit(rootA, rootB)
+	{
+		return {
+			stack: [[rootA, rootB]], statusA: new Map(), statusB: new Map(),
+			testedTriA: new Set(), testedTriB: new Set(), collidedTriA: new Set(), collidedTriB: new Set(),
+			collisions: [], nodePairsTested: 0, triangleTests: 0, done: false
+		};
+	}
+
+	function pairTraverseStep(state)
+	{
+		if (state.stack.length === 0)
+		{
+			state.done = true;
+			return { description: "Traversal complete." };
+		}
+		let [nodeA, nodeB] = state.stack.pop();
+		state.nodePairsTested++;
+
+		if (!boxesOverlap(nodeA.box, nodeB.box))
+		{
+			upgradeStatus(state.statusA, nodeA.id, 'pruned');
+			upgradeStatus(state.statusB, nodeB.id, 'pruned');
+			return { description: `A#${nodeA.id} vs B#${nodeB.id}: boxes do not overlap → pruned (skips ${nodeA.leafCount}×${nodeB.leafCount} triangle pair(s)).` };
+		}
+
+		if (nodeA.leaf && nodeB.leaf)
+		{
+			state.triangleTests++;
+			state.testedTriA.add(nodeA.triId);
+			state.testedTriB.add(nodeB.triId);
+			let hit = triangleIntersect(nodeA.triangle, nodeB.triangle);
+			if (hit)
+			{
+				state.collidedTriA.add(nodeA.triId);
+				state.collidedTriB.add(nodeB.triId);
+				state.collisions.push([nodeA.triId, nodeB.triId]);
+			}
+			return { description: `A#${nodeA.id} vs B#${nodeB.id}: leaf vs leaf → exact triangle test → ${hit ? 'COLLISION' : 'no collision'}.` };
+		}
+
+		upgradeStatus(state.statusA, nodeA.id, 'active');
+		upgradeStatus(state.statusB, nodeB.id, 'active');
+
+		if (nodeB.leaf || (!nodeA.leaf && boxArea(nodeA.box) >= boxArea(nodeB.box)))
+		{
+			state.stack.push([nodeA.left, nodeB], [nodeA.right, nodeB]);
+			return { description: `A#${nodeA.id} vs B#${nodeB.id}: descend A's children (A is larger, or B is a leaf).` };
+		}
+		state.stack.push([nodeA, nodeB.left], [nodeA, nodeB.right]);
+		return { description: `A#${nodeA.id} vs B#${nodeB.id}: descend B's children.` };
+	}
+
+	function runFullPairTraversal(rootA, rootB)
+	{
+		let state = pairTraverseInit(rootA, rootB);
+		while (!state.done)
+			pairTraverseStep(state);
+		return state;
+	}
+
+	// ground truth used only for validation: every triangle of A against every triangle of B
+	function bruteForceCollisions(rootA, rootB)
+	{
+		let leavesA = [], leavesB = [];
+		collectLeaves(rootA, leavesA);
+		collectLeaves(rootB, leavesB);
+		let collisions = [];
+		for (let la of leavesA)
+			for (let lb of leavesB)
+				if (triangleIntersect(la.triangle, lb.triangle))
+					collisions.push([la.triId, lb.triId]);
+		return collisions;
+	}
+
+	class MeshObject
+	{
+		constructor(nx, ny, cellSize, center, speed)
+		{
+			let gen = generateMesh(nx, ny, cellSize);
+			this.localVerts = gen.verts;
+			this.triList = gen.tris;
+			this.root = buildMeshBVH(this.localVerts, this.triList);
+			this.radius = Math.max(...this.localVerts.map(p => len(p))) + cellSize * 0.4;
+
+			this.center = center;
+			this.angle = 0;
+			let a = Math.random() * 2 * Math.PI;
+			this.vel = { x: Math.cos(a) * speed, y: Math.sin(a) * speed };
+			this.angVel = (Math.random() - 0.5) * 0.5;
+
+			this.updateWorld();
+		}
+
+		updateWorld()
+		{
+			let ca = Math.cos(this.angle), sa = Math.sin(this.angle);
+			this.worldVerts = this.localVerts.map(p => ({ x: this.center.x + p.x * ca - p.y * sa, y: this.center.y + p.x * sa + p.y * ca }));
+			refitMeshBVH(this.root, this.worldVerts);
+		}
+
+		pointInside(p)
+		{
+			for (let tri of this.triList)
+			{
+				if (pointInTriangle(p, this.worldVerts[tri[0]], this.worldVerts[tri[1]], this.worldVerts[tri[2]]))
+					return true;
+			}
+			return false;
+		}
+	}
+
+	class Simulation
+	{
+		constructor(nxA, nyA, nxB, nyB, speed, panelWidth, panelHeight)
+		{
+			this.panelWidth = panelWidth;
+			this.panelHeight = panelHeight;
+			this.mode = 'continuous';
+			const cellSize = 26;
+
+			this.meshA = new MeshObject(nxA, nyA, cellSize, { x: panelWidth * 0.35, y: panelHeight * 0.5 }, speed);
+			this.meshB = new MeshObject(nxB, nyB, cellSize, { x: panelWidth * 0.65, y: panelHeight * 0.5 }, speed);
+
+			this.traverseState = pairTraverseInit(this.meshA.root, this.meshB.root);
+			this.bruteForceCollisions = bruteForceCollisions(this.meshA.root, this.meshB.root);
+		}
+
+		bounceWall(mesh)
+		{
+			let r = mesh.radius;
+			if (mesh.center.x - r < 0)                 { mesh.center.x = r;                     mesh.vel.x = Math.abs(mesh.vel.x); }
+			if (mesh.center.x + r > this.panelWidth)   { mesh.center.x = this.panelWidth - r;   mesh.vel.x = -Math.abs(mesh.vel.x); }
+			if (mesh.center.y - r < 0)                 { mesh.center.y = r;                     mesh.vel.y = Math.abs(mesh.vel.y); }
+			if (mesh.center.y + r > this.panelHeight)  { mesh.center.y = this.panelHeight - r;  mesh.vel.y = -Math.abs(mesh.vel.y); }
+		}
+
+		integrate(dt)
+		{
+			for (let m of [this.meshA, this.meshB])
+			{
+				m.center.x += m.vel.x * dt; m.center.y += m.vel.y * dt; m.angle += m.angVel * dt;
+				this.bounceWall(m);
+				m.updateWorld();
+			}
+		}
+
+		runQuery()
+		{
+			this.traverseState = runFullPairTraversal(this.meshA.root, this.meshB.root);
+			this.bruteForceCollisions = bruteForceCollisions(this.meshA.root, this.meshB.root);
+		}
+
+		manualStep()
+		{
+			let r = pairTraverseStep(this.traverseState);
+			this.bruteForceCollisions = bruteForceCollisions(this.meshA.root, this.meshB.root);
+			return r;
+		}
+
+		restartTraversal()
+		{
+			this.traverseState = pairTraverseInit(this.meshA.root, this.meshB.root);
+			this.bruteForceCollisions = bruteForceCollisions(this.meshA.root, this.meshB.root);
+		}
+	}
+
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.dragTarget = null;
+			this.showInternalBoxes = true;
+			this.stepLog = [];
+			this.camera = { zoom: 1, x: 0, y: 0 };	// mouse-wheel zoom (zoom-to-cursor); x/y is the screen-space pan offset
+
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), false);
+			this.canvas.addEventListener("touchstart", this.touchStart.bind(this), { passive: false });
+			this.canvas.addEventListener("touchmove", this.touchMove.bind(this), { passive: false });
+			this.canvas.addEventListener("touchend", this.touchEnd.bind(this), { passive: false });
+		}
+
+		// convert a raw canvas-pixel position to world (simulation) coordinates,
+		// inverting the pan/zoom applied in draw()
+		screenToWorld(pos)
+		{
+			return { x: (pos.x - this.camera.x) / this.camera.zoom, y: (pos.y - this.camera.y) / this.camera.zoom };
+		}
+
+		// zoom in/out around the point under the cursor
+		wheel(event)
+		{
+			event.preventDefault();
+			let screenPos = this.getMousePos(this.canvas, event);
+			let worldPos = this.screenToWorld(screenPos);
+			let factor = Math.pow(1.0015, -event.deltaY);
+			this.camera.zoom = Math.min(Math.max(this.camera.zoom * factor, 0.4), 6);
+			// keep worldPos fixed under the cursor after the zoom change
+			this.camera.x = screenPos.x - worldPos.x * this.camera.zoom;
+			this.camera.y = screenPos.y - worldPos.y * this.camera.zoom;
+			this.draw();
+		}
+
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			let resA = parseInt(document.getElementById('resAInput').value);
+			let resB = parseInt(document.getElementById('resBInput').value);
+			let speed = parseFloat(document.getElementById('speedInput').value);
+
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.dragTarget = null;
+			this.stepLog = [];
+			document.getElementById("stepLog").innerHTML = "";
+
+			delete this.sim;
+			this.sim = new Simulation(resA, resA, resB, resB, speed, this.canvas.width, this.canvas.height);
+			this.sim.mode = document.getElementById('modeInput').value;
+			this.pause = (this.sim.mode === 'step');
+
+			this.refresh();
+			if (!this.pause)
+				this.mainLoop();
+		}
+
+		setMode(mode)
+		{
+			this.sim.mode = mode;
+			if (mode === 'step')
+			{
+				this.pause = true;
+				this.sim.restartTraversal();
+				this.stepLog = [];
+				document.getElementById("stepLog").innerHTML = "";
+			}
+			else
+			{
+				this.pause = false;
+			}
+			this.refresh();
+			if (!this.pause)
+				this.mainLoop();
+		}
+
+		restartTraversal()
+		{
+			this.sim.restartTraversal();
+			this.stepLog = [];
+			document.getElementById("stepLog").innerHTML = "";
+			this.refresh();
+		}
+
+		step()
+		{
+			let r = this.sim.manualStep();
+			this.logStep(r.description);
+			this.refresh();
+		}
+
+		convergeNow()
+		{
+			let guard = 0;
+			while (!this.sim.traverseState.done && guard < 2000)
+			{
+				let r = this.sim.manualStep();
+				this.logStep(r.description);
+				guard++;
+			}
+			this.refresh();
+		}
+
+		logStep(text)
+		{
+			this.stepLog.unshift(text);
+			if (this.stepLog.length > 6)
+				this.stepLog.length = 6;
+			document.getElementById("stepLog").innerHTML = this.stepLog.map(s => `<div>${s}</div>`).join('');
+		}
+
+		refresh()
+		{
+			if (this.sim.mode === 'continuous')
+				this.sim.runQuery();
+			this.updateStats();
+			this.draw();
+		}
+
+		updateStats()
+		{
+			let st = this.sim.traverseState;
+			document.getElementById("numTrisA").innerHTML = this.sim.meshA.triList.length;
+			document.getElementById("numTrisB").innerHTML = this.sim.meshB.triList.length;
+			document.getElementById("treeHeightA").innerHTML = treeHeight(this.sim.meshA.root);
+			document.getElementById("treeHeightB").innerHTML = treeHeight(this.sim.meshB.root);
+			document.getElementById("nodePairsTested").innerHTML = st.nodePairsTested;
+			document.getElementById("triTestsBVH").innerHTML = st.triangleTests;
+			document.getElementById("triTestsBF").innerHTML = this.sim.meshA.triList.length * this.sim.meshB.triList.length;
+			document.getElementById("numCollisions").innerHTML = st.collisions.length;
+			document.getElementById("numCollisionsBF").innerHTML = this.sim.bruteForceCollisions.length;
+			document.getElementById("status").innerHTML = st.collisions.length > 0 ? "Colliding" : "No collision";
+
+			let checkNow = st.done || this.sim.mode === 'continuous';
+			let bvhSet = new Set(st.collisions.map(([a, b]) => `${a}:${b}`));
+			let bfSet = new Set(this.sim.bruteForceCollisions.map(([a, b]) => `${a}:${b}`));
+			let mismatch = checkNow && !setsEqual(bvhSet, bfSet);
+			document.getElementById("numCollisions").style.color = mismatch ? "#e61e1e" : "";
+		}
+
+		drawInternalBoxes(node, statusMap)
+		{
+			if (node.leaf) return;
+			let c = this.c;
+			let status = statusMap.get(node.id);
+			let color = status === 'pruned' ? "#f59e0b" : status === 'active' ? "#4673e5" : "#cbd5e1";
+			c.save();
+			c.globalAlpha = status ? 0.55 : 0.25;
+			c.strokeStyle = color;
+			c.lineWidth = 1.5;
+			let b = node.box;
+			c.strokeRect(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY);
+			c.restore();
+			this.drawInternalBoxes(node.left, statusMap);
+			this.drawInternalBoxes(node.right, statusMap);
+		}
+
+		drawMesh(mesh, baseFill, baseStroke, testedSet, collidedSet)
+		{
+			let c = this.c;
+			// draw using BVH leaves so triId lines up exactly with the traversal's bookkeeping
+			let leaves = [];
+			collectLeaves(mesh.root, leaves);
+			for (let leaf of leaves)
+			{
+				let [a, b, cc] = leaf.triangle;
+				let collided = collidedSet.has(leaf.triId);
+				let tested = testedSet.has(leaf.triId);
+				c.beginPath();
+				c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.lineTo(cc.x, cc.y);
+				c.closePath();
+				c.fillStyle = collided ? "rgba(230,30,30,0.65)" : tested ? "rgba(250,204,21,0.55)" : baseFill;
+				c.fill();
+				c.strokeStyle = collided ? "#e61e1e" : tested ? "#ca8a04" : baseStroke;
+				c.lineWidth = collided || tested ? 2 : 1;
+				c.globalAlpha = collided || tested ? 1 : 0.5;
+				c.stroke();
+				c.globalAlpha = 1;
+			}
+		}
+
+		draw()
+		{
+			let c = this.c, sim = this.sim, st = sim.traverseState;
+			c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			c.fillStyle = "#ffffff";
+			c.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+			// pan/zoom applies only to the world-space content (meshes + boxes),
+			// not the fixed screen-space labels/border drawn below
+			c.save();
+			c.translate(this.camera.x, this.camera.y);
+			c.scale(this.camera.zoom, this.camera.zoom);
+
+			if (this.showInternalBoxes)
+			{
+				this.drawInternalBoxes(sim.meshA.root, st.statusA);
+				this.drawInternalBoxes(sim.meshB.root, st.statusB);
+			}
+
+			this.drawMesh(sim.meshA, "rgba(70,115,229,0.28)", "#4673e5", st.testedTriA, st.collidedTriA);
+			this.drawMesh(sim.meshB, "rgba(16,185,129,0.28)", "#10b981", st.testedTriB, st.collidedTriB);
+
+			c.restore();
+
+			c.fillStyle = "#4b5563";
+			c.font = "13px Inter, sans-serif";
+			c.fillText("Mesh A (blue) and Mesh B (green) — drag either one", 10, 20);
+			if (st.collisions.length > 0)
+			{
+				c.fillStyle = "#e61e1e";
+				c.font = "bold 16px Inter, sans-serif";
+				c.fillText(`Colliding! (${st.collisions.length} triangle pair(s))`, 10, 44);
+			}
+
+			c.strokeStyle = "#999999";
+			c.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+		}
+
+		mainLoop()
+		{
+			let t0 = performance.now();
+
+			if (!this.pause)
+				this.sim.integrate(1 / 60);
+			this.refresh();
+
+			let t1 = performance.now();
+			this.timeSum += t1 - t0;
+			this.counter += 1;
+			if (this.counter % 30 == 0)
+			{
+				this.timeSum /= this.counter;
+				document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(3);
+				this.timeSum = 0.0;
+				this.counter = 0;
+			}
+
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));
+		}
+
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+
+		pickMesh(pos)
+		{
+			if (this.sim.meshA.pointInside(pos)) return 'A';
+			if (this.sim.meshB.pointInside(pos)) return 'B';
+			return null;
+		}
+
+		mouseDown(event)
+		{
+			if (event.which == 1)
+			{
+				let pos = this.screenToWorld(this.getMousePos(this.canvas, event));
+				this.dragTarget = this.pickMesh(pos);
+				let mesh = this.dragTarget === 'A' ? this.sim.meshA : this.dragTarget === 'B' ? this.sim.meshB : null;
+				if (mesh) { mesh.vel.x = 0; mesh.vel.y = 0; mesh.angVel = 0; }
+			}
+		}
+
+		getMousePos(canvas, event)
+		{
+			const rect = canvas.getBoundingClientRect();
+			const scaleX = canvas.width / rect.width;
+			const scaleY = canvas.height / rect.height;
+			return {
+				x: (event.clientX - rect.left) * scaleX,
+				y: (event.clientY - rect.top) * scaleY
+			};
+		}
+
+		mouseMove(event)
+		{
+			if (this.dragTarget)
+			{
+				let pos = this.screenToWorld(this.getMousePos(this.canvas, event));
+				let mesh = this.dragTarget === 'A' ? this.sim.meshA : this.sim.meshB;
+				mesh.center.x = Math.min(Math.max(pos.x, mesh.radius), this.canvas.width - mesh.radius);
+				mesh.center.y = Math.min(Math.max(pos.y, mesh.radius), this.canvas.height - mesh.radius);
+				mesh.updateWorld();
+				if (this.sim.mode === 'step')
+					this.sim.restartTraversal();
+				this.refresh();
+			}
+		}
+
+		mouseUp(event)
+		{
+			this.dragTarget = null;
+		}
+
+		getTouchClient(event)
+		{
+			const t = event.touches.length > 0 ? event.touches[0] : event.changedTouches[0];
+			return { clientX: t.clientX, clientY: t.clientY };
+		}
+
+		touchStart(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseDown({ which: 1, ...this.getTouchClient(event) });
+		}
+
+		touchMove(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseMove(this.getTouchClient(event));
+		}
+
+		touchEnd(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 0)
+				this.mouseUp(event);
+		}
+	}
+
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>
