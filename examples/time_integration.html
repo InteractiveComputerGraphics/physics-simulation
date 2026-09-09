@@ -76,45 +76,90 @@
 	<!-- Theory section -->
 	<div class="card theory">
 			<h2>Time integration methods:</h2>
-				This example shows the motion of a particle with an initial velocity. Moreover, a constant gravitational acceleration is acting on the particle. In this special case an analytic solution can be computed as:
+				Simulating the motion of a physical system means solving its equations of motion, a system of ordinary differential equations (ODEs) that relate positions, velocities and accelerations. Since these equations can generally not be solved analytically, we approximate the solution step by step: given the state (position and velocity) at time $t$, a <b>time integration method</b> computes an approximation of the state at time $t + \Delta t$ using the currently acting forces. Repeating this update for a sequence of small time steps $\Delta t$ advances the simulation over time.
+				<p>
+				This example shows the motion of a single particle that has an initial velocity and is subject to a constant gravitational acceleration. Because the acceleration is constant here, this special case is one of the rare ones that admits a closed-form solution:
 				$$\begin{align*}
 					\mathbf x(t + \Delta t) &= \mathbf x(t) + \Delta t \mathbf v(t) + \frac12 \Delta t^2 \mathbf a^\text{grav} \\
 					\mathbf v(t + \Delta t) &= \mathbf v(t) + \Delta t \mathbf a^\text{grav} .
 				\end{align*}$$
-				The motion determined using this analytic solution is plotted in green and can be compared with different numerical solutions that are introduced in the following.
-				
+				This exact trajectory is plotted in green and serves as ground truth against which the numerical solutions (blue), computed with the methods introduced below, can be compared. As soon as forces depend on the state itself in a more complex way &mdash; e.g. spring, contact or SPH pressure forces &mdash; no analytic solution is available anymore and numerical time integration becomes essential.
+				</p>
+				<p>
+				Three properties are commonly used to characterize and compare time integration methods:
+				<ul>
+					<li><b>Order of accuracy:</b> A method of order $p$ has a local error (introduced in a single step) of $O(\Delta t^{p+1})$ and, consequently, a global error (accumulated over a fixed time interval) of $O(\Delta t^{p})$. Halving $\Delta t$ for a method of order $p$ roughly reduces the global error by a factor of $2^p$.</li>
+					<li><b>Computational cost:</b> given by the number of evaluations of the acceleration/force function required per time step. This is important in practice since evaluating the forces (e.g. for cloth, deformable solids or SPH fluids) is usually the most expensive part of a simulation step.</li>
+					<li><b>Stability and energy behavior:</b> describes how the numerical solution behaves over long simulation times, in particular whether it stays close to the true trajectory or whether energy is spuriously gained, lost, or oscillates around the correct value.</li>
+				</ul>
+				Try the different methods in the simulation with a large time step (e.g. $\Delta t = 0.1$) and compare how far the blue (numerical) trajectory deviates from the green (exact) one.
+				</p>
+
 			<h3>Explicit Euler</h3>
-			
-				The explicit Euler method is a first-order accurate method for solving ordinary differential equations (ODEs):
+
+				The explicit Euler method (also called forward Euler) is the simplest time integration scheme for ODEs. It uses only quantities known at the current time $t$ to extrapolate the state to $t + \Delta t$:
 				$$\begin{align*}
 					\mathbf x(t + \Delta t) &= \mathbf x(t) + \Delta t \mathbf v(t) \\
 					\mathbf v(t + \Delta t) &= \mathbf v(t) + \Delta t \mathbf a(t).
 				\end{align*}$$
-				
+				<p><b>Properties:</b></p>
+				<ul>
+					<li>First-order accurate ($O(\Delta t)$ global error); requires only a single force evaluation per step, so it is the cheapest of the three methods.</li>
+					<li><b>Not symplectic:</b> it systematically injects energy into the system because the position update uses the <em>old</em> velocity $\mathbf v(t)$ instead of the newly computed one. For an oscillating system (e.g. a mass on a spring) this causes the amplitude to grow over time, even though the exact solution conserves energy.</li>
+					<li>Only conditionally stable: for stiff forces (e.g. stiff springs) $\Delta t$ must be chosen small enough, otherwise the simulation diverges numerically. For this reason explicit Euler is rarely used in practice and mainly serves as a baseline for comparison.</li>
+				</ul>
+
 			<h3>Symplectic Euler</h3>
-			
-				The symplectic Euler method is also known as semi-implicit Euler since first the new velocity is determined and then the new position is computed using the new velocity value:
+
+				The symplectic Euler method is also known as semi-implicit Euler: it first updates the velocity using the current acceleration, and then uses this <em>already updated</em> velocity to advance the position:
 				$$\begin{align*}
 					\mathbf v(t + \Delta t) &= \mathbf v(t) + \Delta t \mathbf a(t) \\
 					\mathbf x(t + \Delta t) &= \mathbf x(t) + \Delta t \mathbf v(t + \Delta t).
 				\end{align*}$$
-				The method is also first-order accurate but yields better results than the explicit Euler since it is a symplectic method.
-				
+				<p><b>Properties:</b></p>
+				<ul>
+					<li>Still only first-order accurate, just like explicit Euler, and has the same cost of a single force evaluation per step &mdash; switching from explicit to symplectic Euler is essentially "free" in terms of performance.</li>
+					<li><b>Symplectic:</b> the method (approximately) preserves phase-space volume, which implies that the energy error stays bounded and oscillates around the true value instead of drifting away over time. This yields qualitatively much better long-term behavior than explicit Euler, even though the two methods have the same order and the same error at any single instant.</li>
+					<li>Because it is cheap, simple to implement and behaves well over long simulations, symplectic Euler is the de-facto standard in real-time physics: it is used for particle systems, cloth, rigid bodies, SPH fluids and position-based dynamics alike.</li>
+				</ul>
+
 			<h3>Runge-Kutta 2</h3>
-			
-				Typically numerical integration methods are defined for a differential equation determined by a function $\mathbf f(t, \mathbf s(t))$, where $\mathbf s$ defines the state of the system at time $t$. In our example the state is defined by the current position and velocity of the particle and the function is defined as:
+
+				Higher-order integration methods are usually formulated for a general first-order ODE $\dot{\mathbf s}(t) = \mathbf f(t, \mathbf s(t))$, where $\mathbf s$ is the state of the system at time $t$. In our example the state consists of the particle's position and velocity, and the ODE is defined by:
 				$$\begin{equation*}
-					\mathbf f(t, \mathbf s(t)) = \begin{pmatrix} \dot{\mathbf x} \\ \dot{\mathbf v} \end{pmatrix}, \quad\quad \mathbf s(t) = \begin{pmatrix} \mathbf x(t) \\ \mathbf v(t) \end{pmatrix}
+					\mathbf f(t, \mathbf s(t)) = \begin{pmatrix} \dot{\mathbf x} \\ \dot{\mathbf v} \end{pmatrix} = \begin{pmatrix} \mathbf v(t) \\ \mathbf a(t) \end{pmatrix}, \quad\quad \mathbf s(t) = \begin{pmatrix} \mathbf x(t) \\ \mathbf v(t) \end{pmatrix}.
 				\end{equation*}$$
-				
-				Using this function the second-order Runge-Kutta integration is defined as
+
+				Using this notation, the second-order Runge-Kutta method (also known as the midpoint method) is defined as:
 				$$\begin{align*}
-					\mathbf k_1 &= \Delta t \mathbf f(t, \mathbf s(t)) \\
-					\mathbf k_2 &= \Delta t \mathbf f(t + \frac12 \Delta t, \mathbf s(t) + \frac12 \mathbf k_1) \\
+					\mathbf k_1 &= \Delta t \, \mathbf f(t, \mathbf s(t)) \\
+					\mathbf k_2 &= \Delta t \, \mathbf f\!\left(t + \tfrac12 \Delta t,\; \mathbf s(t) + \tfrac12 \mathbf k_1\right) \\
 					\mathbf s(t + \Delta t) &= \mathbf s(t) + \mathbf k_2.
 				\end{align*}$$
-				Note that the Runge-Kutta method has multiple stages (in our case 2) to achieve a higher-order accuracy. However, this approach is more expensive than the Euler methods since the function has to be evaluated once per stage. 
-	</div>	
+				Intuitively, $\mathbf k_1$ is a trial (explicit Euler) step used only to estimate the state at the midpoint $t + \frac12 \Delta t$; the actual step $\mathbf k_2$ is then taken using the derivative evaluated at that midpoint, which cancels out the leading-order error term of the Euler methods.
+				<p><b>Properties:</b></p>
+				<ul>
+					<li>Second-order accurate ($O(\Delta t^2)$ global error): halving $\Delta t$ roughly quarters the error, so for smooth, non-stiff problems RK2 reaches a given accuracy with a much larger time step than either Euler method.</li>
+					<li>Has two stages, i.e. the function $\mathbf f$ must be evaluated twice per time step &mdash; roughly twice the cost of an Euler step. In general, an order-$p$ Runge-Kutta method typically needs at least $p$ stages, so higher accuracy is traded against more force evaluations per step.</li>
+					<li><b>Not symplectic:</b> despite its higher accuracy, RK2 can still exhibit long-term energy drift on oscillatory problems; the higher order just makes the drift smaller and less visible over short simulation times.</li>
+				</ul>
+
+			<h3>Summary</h3>
+				<p>The following table summarizes the properties discussed above:</p>
+				<table>
+					<tr><th>Method</th><th>Order</th><th>Force evals / step</th><th>Symplectic</th><th>Typical use</th></tr>
+					<tr><td>Explicit Euler</td><td>1</td><td>1</td><td>No</td><td>Baseline / teaching example</td></tr>
+					<tr><td>Symplectic Euler</td><td>1</td><td>1</td><td>Yes</td><td>Default for real-time simulation (games, cloth, rigid bodies, SPH, PBD)</td></tr>
+					<tr><td>Runge-Kutta 2</td><td>2</td><td>2</td><td>No</td><td>Higher short-term accuracy for smooth, non-stiff problems</td></tr>
+				</table>
+				There is no single "best" method: the right choice depends on whether short-term accuracy, long-term (energy) stability, or per-step cost matters most for the application at hand. Higher-order methods such as Runge-Kutta 4, or implicit methods for stiff problems, extend these same trade-offs further and are covered in later examples.
+
+			<h3>References</h3>
+			<ul>
+				<li>[HLW06] Ernst Hairer, Christian Lubich, Gerhard Wanner. Geometric Numerical Integration: Structure-Preserving Algorithms for Ordinary Differential Equations, 2nd edition. Springer, 2006.</li>
+				<li>[BW98] David Baraff, Andrew Witkin. Large Steps in Cloth Simulation. In Proceedings of SIGGRAPH, 1998.</li>
+			</ul>
+	</div>
 	
 </main>
 
