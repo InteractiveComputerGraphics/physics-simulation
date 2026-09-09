@@ -1,0 +1,576 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Sweep and Prune</title>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>Sweep and Prune</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="70%">
+		<col width="30%">
+		<tr>
+			<td>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="960" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+					<p class="canvas-hint">Drag any box with the mouse to position it precisely and watch the overlap test react.</p>
+				</div>
+			</td>
+			<td>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Time per step</label>
+						<span class="stat-value"><span id="timePerStep">0.00</span> ms</span>
+
+						<label>Sweep axis used</label>
+						<span class="stat-value"><span id="activeAxis">X</span></span>
+
+						<label># overlapping pairs</label>
+						<span class="stat-value"><span id="numOverlaps">0</span></span>
+
+						<label># tests (sweep &amp; prune)</label>
+						<span class="stat-value"><span id="sapTests">0</span></span>
+
+						<label># tests (brute force)</label>
+						<span class="stat-value"><span id="bruteTests">0</span></span>
+
+						<label>Speed-up factor</label>
+						<span class="stat-value"><span id="speedup">1.00x</span></span>
+
+						<label for="numBoxesInput"># boxes</label>
+						<input onchange="gui.restart()" id="numBoxesInput" type="number" value="18" min="2" max="60" step="1">
+
+						<label for="speedInput">Box speed</label>
+						<input onchange="gui.restart()" id="speedInput" type="number" value="120" min="0" step="10">
+
+						<label for="sweepAxisInput">Sweep axis</label>
+						<select onchange="gui.restart()" id="sweepAxisInput">
+							<option value="auto" selected="selected">Auto (largest spread)</option>
+							<option value="x">X</option>
+							<option value="y">Y</option>
+						</select>
+
+						<label for="showSweepInput">Show sweep list</label>
+						<input onchange="gui.showSweep = this.checked; gui.draw();" id="showSweepInput" type="checkbox" checked>
+
+						<div class="full-width">
+							<button onclick="gui.restart()" id="restart">&#9654; Restart</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.doPause()" id="Pause" class="btn-secondary">&#9646;&#9646; Pause</button>
+						</div>
+					</div>
+				</div>
+			</td>
+		</tr>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
+			<h2>Sweep and prune for AABB overlap tests:</h2>
+			<p>
+			Before two objects are tested for an exact (and usually expensive) geometric collision, simulations first run a cheap <b>broad phase</b>: every object is enclosed in an <b>axis-aligned bounding box (AABB)</b>, and only pairs whose boxes overlap are passed on to narrow-phase testing. The simplest broad phase checks all ${n \choose 2} = \frac{n(n-1)}{2}$ pairs of the $n$ objects directly, an $O(n^2)$ cost that quickly becomes the bottleneck in scenes with many objects.
+			</p>
+			<p>
+			The <b>sweep and prune</b> method (also called <em>sort and sweep</em>) [Coh95,Eri04] avoids most of these tests by exploiting a simple 1D fact: two intervals $[a_{\min},a_{\max}]$ and $[b_{\min},b_{\max}]$ overlap if and only if
+			$$a_{\min} \le b_{\max} \quad\text{and}\quad b_{\min} \le a_{\max}.$$
+			Two AABBs overlap exactly when their projections overlap on <em>every</em> coordinate axis (in 2D: $x$ and $y$). Sweep and prune therefore reduces the 2D/3D overlap problem to a small number of cheap 1D interval checks along one distinguished axis, and only confirms the remaining axes for the few candidates that survive.
+			</p>
+
+			<h3>The algorithm</h3>
+			<ol>
+				<li>Pick one coordinate axis, the <b>sweep axis</b>.</li>
+				<li>Sort all boxes by their lower endpoint ($\min$) along the sweep axis.</li>
+				<li class="nostyle"><b>sweep once through the sorted list, keeping an <em>active list</em>:</b></li>
+				<li style="margin-left:40px">remove every box from the active list whose upper endpoint ($\max$) already lies before the current box's lower endpoint &mdash; since the list is sorted, such a box cannot overlap the current box <em>or any later box</em> on the sweep axis, so it is pruned for good</li>
+				<li style="margin-left:40px">every box still in the active list is now guaranteed to overlap the current box on the sweep axis, so only the <em>remaining</em> axis (axes, in 3D) needs to be checked to confirm a true AABB overlap</li>
+				<li style="margin-left:40px">add the current box to the active list</li>
+			</ol>
+			<p>
+			The simulation on the left visualizes this directly: the arena shows the boxes moving and bouncing off the walls (overlapping boxes are highlighted in red), while the strip next to or below it shows the very same boxes sorted by their lower endpoint along the current sweep axis &mdash; i.e. exactly the intermediate data structure the algorithm sweeps through. Watch how only boxes that are neighbors in this sorted list are ever tested against each other.
+			</p>
+
+			<h3>Choosing the sweep axis</h3>
+			<p>
+			Pruning only helps if the active list stays short. On this axis, an active list only grows long when many box intervals are stacked on top of each other &mdash; which happens least often along the axis on which the box centers are spread out the most. The "Auto" mode in this example implements exactly this common heuristic [Eri04]: each frame it measures the extent (spread) of all box centers along $x$ and along $y$, and picks whichever axis has the larger spread as the sweep axis. Compare it with the fixed "X" or "Y" choice, in particular for a scene where the boxes are arranged mostly along one direction, to see why axis selection matters.
+			</p>
+
+			<h3>Complexity and properties</h3>
+			<ul>
+				<li><b>Worst case is still $O(n^2)$:</b> if all boxes overlap on the sweep axis (e.g. many long, thin boxes stacked across the whole domain), the active list never shrinks and every pair is tested anyway. Sweep and prune reduces the <em>typical</em>, not the worst-case, cost.</li>
+				<li><b>Exploits temporal coherence:</b> objects usually move only a little between two consecutive simulation steps, so the sort order rarely changes much from one frame to the next. Real implementations re-sort with <b>insertion sort</b> instead of a generic $O(n \log n)$ sort: insertion sort is slow in general but very fast (close to $O(n)$) on an already almost-sorted list, which is exactly the case here.</li>
+				<li><b>Extends to 3D</b> by adding a $z$ interval, or by running one sweep per axis and intersecting the candidate pairs (the classic 3-axis sweep and prune used e.g. in the Bullet physics engine).</li>
+				<li><b>Broad phase only:</b> an AABB overlap does not mean the actual objects touch, it only means they <em>might</em> &mdash; the pairs found here would normally be forwarded to an exact narrow-phase test. This mirrors the role of the uniform grid in the <a href="neighborhood_search.html">neighborhood search</a> example: both quickly discard the vast majority of pairs that cannot possibly interact, using very different underlying data structures (a sorted list here, a spatial hash there).</li>
+			</ul>
+
+			<h3>References</h3>
+			<ul>
+			<li>[Coh95] Jonathan D. Cohen, Ming C. Lin, Dinesh Manocha, Madhav Ponamgi. I-COLLIDE: An Interactive and Exact Collision Detection System for Large-Scale Environments. In Proceedings of the Symposium on Interactive 3D Graphics, 1995.</li>
+			<li>[Eri04] Christer Ericson. Real-Time Collision Detection. Morgan Kaufmann, 2004.</li>
+			</ul>
+	</div>
+
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Box
+	{
+		constructor(x, y, halfWidth, halfHeight, vx, vy, color)
+		{
+			this.x = x;				// center position
+			this.y = y;
+			this.hw = halfWidth;
+			this.hh = halfHeight;
+			this.vx = vx;
+			this.vy = vy;
+			this.color = color;
+		}
+
+		get minX() { return this.x - this.hw; }
+		get maxX() { return this.x + this.hw; }
+		get minY() { return this.y - this.hh; }
+		get maxY() { return this.y + this.hh; }
+	}
+
+	class Simulation
+	{
+		constructor(numBoxes, speed, sweepAxisMode, arenaWidth, arenaHeight)
+		{
+			this.arenaWidth = arenaWidth;
+			this.arenaHeight = arenaHeight;
+			this.speed = speed;
+			this.sweepAxisMode = sweepAxisMode;	// 'x', 'y' or 'auto'
+
+			this.boxes = [];
+			this.sortedOrder = [];
+			this.overlaps = [];
+			this.overlapSet = new Set();
+			this.sapTestCount = 0;
+			this.bruteForceTestCount = 0;
+			this.activeAxis = 'x';
+			this.time = 0.0;
+
+			this.init(numBoxes);
+		}
+
+		// create a random set of boxes with random position and velocity
+		init(numBoxes)
+		{
+			this.boxes = [];
+			for (let i = 0; i < numBoxes; i++)
+			{
+				let hw = 15 + Math.random() * 35;
+				let hh = 15 + Math.random() * 35;
+				let x = hw + Math.random() * (this.arenaWidth - 2 * hw);
+				let y = hh + Math.random() * (this.arenaHeight - 2 * hh);
+				let angle = Math.random() * 2 * Math.PI;
+				let vx = Math.cos(angle) * this.speed;
+				let vy = Math.sin(angle) * this.speed;
+				let hue = Math.floor(Math.random() * 360);
+				this.boxes.push(new Box(x, y, hw, hh, vx, vy, `hsl(${hue},70%,50%)`));
+			}
+			this.time = 0.0;
+
+			// run the broad phase once so the very first frame already shows a result
+			this.detectCollisions();
+		}
+
+		// move all boxes and bounce them off the arena walls
+		integrate(dt)
+		{
+			for (let i = 0; i < this.boxes.length; i++)
+			{
+				let b = this.boxes[i];
+				b.x = b.x + dt * b.vx;
+				b.y = b.y + dt * b.vy;
+
+				if (b.x - b.hw < 0)                { b.x = b.hw;                    b.vx = Math.abs(b.vx); }
+				if (b.x + b.hw > this.arenaWidth)  { b.x = this.arenaWidth - b.hw;  b.vx = -Math.abs(b.vx); }
+				if (b.y - b.hh < 0)                { b.y = b.hh;                    b.vy = Math.abs(b.vy); }
+				if (b.y + b.hh > this.arenaHeight) { b.y = this.arenaHeight - b.hh; b.vy = -Math.abs(b.vy); }
+			}
+		}
+
+		// heuristic: use the axis along which the box centers are spread out the most
+		chooseAxis()
+		{
+			if (this.boxes.length === 0)
+				return 'x';
+
+			let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+			for (let i = 0; i < this.boxes.length; i++)
+			{
+				let b = this.boxes[i];
+				minX = Math.min(minX, b.x); maxX = Math.max(maxX, b.x);
+				minY = Math.min(minY, b.y); maxY = Math.max(maxY, b.y);
+			}
+			return (maxX - minX) >= (maxY - minY) ? 'x' : 'y';
+		}
+
+		// sweep and prune broad phase: determine all pairs of overlapping AABBs
+		detectCollisions()
+		{
+			let n = this.boxes.length;
+			let axis = (this.sweepAxisMode === 'auto') ? this.chooseAxis() : this.sweepAxisMode;
+			this.activeAxis = axis;
+
+			let minOf = (axis === 'x') ? (b => b.minX) : (b => b.minY);
+			let maxOf = (axis === 'x') ? (b => b.maxX) : (b => b.maxY);
+			// once two boxes overlap on the sweep axis, this checks the *other* axis
+			let overlapsOtherAxis = (axis === 'x')
+				? ((a, b) => a.minY <= b.maxY && b.minY <= a.maxY)
+				: ((a, b) => a.minX <= b.maxX && b.minX <= a.maxX);
+
+			// 1. sort by the lower endpoint on the sweep axis
+			this.sortedOrder = [...Array(n).keys()].sort((i, j) => minOf(this.boxes[i]) - minOf(this.boxes[j]));
+
+			// 2. sweep through the sorted list, maintaining the active list
+			this.sapTestCount = 0;
+			this.overlaps = [];
+			let overlapSet = new Set();
+			let active = [];
+			for (let k = 0; k < this.sortedOrder.length; k++)
+			{
+				let idx = this.sortedOrder[k];
+				let box = this.boxes[idx];
+
+				// prune: boxes whose interval already ended cannot overlap this (or any later) box
+				active = active.filter(j => maxOf(this.boxes[j]) >= minOf(box));
+
+				// the sweep axis overlap is already guaranteed for everything still active
+				for (let m = 0; m < active.length; m++)
+				{
+					let j = active[m];
+					this.sapTestCount++;
+					if (overlapsOtherAxis(box, this.boxes[j]))
+					{
+						this.overlaps.push([idx, j]);
+						overlapSet.add(idx);
+						overlapSet.add(j);
+					}
+				}
+				active.push(idx);
+			}
+			this.overlapSet = overlapSet;
+
+			// for comparison: brute force always tests every single pair
+			this.bruteForceTestCount = n * (n - 1) / 2;
+		}
+
+		simulationStep(dt)
+		{
+			this.integrate(dt);
+			this.detectCollisions();
+			this.time = this.time + dt;
+		}
+	}
+
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.showSweep = true;
+			this.selectedBox = -1;
+
+			// canvas layout: an arena (top-left) plus two alternate strips used
+			// to visualize the sorted sweep list, depending on the active axis
+			this.arenaWidth = 800;
+			this.arenaHeight = 700;
+			this.stripTop = 720;
+			this.stripHeight = 220;
+			this.stripLeft = 820;
+			this.stripWidth = 204;
+
+			// register mouse event listeners (box selection/dragging)
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);
+			// register touch event listeners (mobile / tablet)
+			this.canvas.addEventListener("touchstart", this.touchStart.bind(this), { passive: false });
+			this.canvas.addEventListener("touchmove", this.touchMove.bind(this), { passive: false });
+			this.canvas.addEventListener("touchend", this.touchEnd.bind(this), { passive: false });
+		}
+
+		// set simulation parameters from GUI and start mainLoop
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			let numBoxes = parseInt(document.getElementById('numBoxesInput').value);
+			let speed = parseFloat(document.getElementById('speedInput').value);
+			let axisMode = document.getElementById('sweepAxisInput').value;
+
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.selectedBox = -1;
+
+			delete this.sim;
+			this.sim = new Simulation(numBoxes, speed, axisMode, this.arenaWidth, this.arenaHeight);
+
+			this.updateStats();
+			this.mainLoop();
+		}
+
+		updateStats()
+		{
+			document.getElementById("numOverlaps").innerHTML = this.sim.overlaps.length;
+			document.getElementById("sapTests").innerHTML = this.sim.sapTestCount;
+			document.getElementById("bruteTests").innerHTML = this.sim.bruteForceTestCount;
+			let speedup = (this.sim.sapTestCount > 0) ? (this.sim.bruteForceTestCount / this.sim.sapTestCount) : this.sim.bruteForceTestCount;
+			document.getElementById("speedup").innerHTML = speedup.toFixed(2) + "x";
+			document.getElementById("activeAxis").innerHTML = this.sim.activeAxis.toUpperCase();
+		}
+
+		// render scene: arena with the boxes, plus the sorted sweep list
+		draw()
+		{
+			let c = this.c;
+			c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+			// arena border
+			c.fillStyle = "#ffffff";
+			c.fillRect(0, 0, this.arenaWidth, this.arenaHeight);
+			c.strokeStyle = "#999999";
+			c.strokeRect(0, 0, this.arenaWidth, this.arenaHeight);
+
+			// draw boxes: overlapping ones highlighted in red, selected one in orange
+			for (let i = 0; i < this.sim.boxes.length; i++)
+			{
+				let b = this.sim.boxes[i];
+				let overlapping = this.sim.overlapSet.has(i);
+				let selected = (i === this.selectedBox);
+
+				c.fillStyle = overlapping ? "rgba(230,30,30,0.30)" : "rgba(70,115,229,0.12)";
+				c.strokeStyle = overlapping ? "#e61e1e" : (selected ? "#f59e0b" : b.color);
+				c.lineWidth = (overlapping || selected) ? 3 : 2;
+				c.fillRect(b.minX, b.minY, b.hw * 2, b.hh * 2);
+				c.strokeRect(b.minX, b.minY, b.hw * 2, b.hh * 2);
+			}
+
+			if (this.showSweep)
+			{
+				if (this.sim.activeAxis === 'x')
+					this.drawXStrip();
+				else
+					this.drawYStrip();
+			}
+		}
+
+		// visualize the sorted sweep list when the sweep axis is x (strip below the arena)
+		drawXStrip()
+		{
+			let c = this.c;
+			let n = this.sim.boxes.length;
+			let rowH = Math.min(18, this.stripHeight / Math.max(n, 1));
+
+			c.fillStyle = "#f5f7ff";
+			c.fillRect(0, this.stripTop, this.arenaWidth, this.stripHeight);
+			c.strokeStyle = "#999999";
+			c.strokeRect(0, this.stripTop, this.arenaWidth, this.stripHeight);
+			c.fillStyle = "#4b5563";
+			c.font = "13px Inter, sans-serif";
+			c.fillText("Boxes sorted by their lower x-endpoint (the sweep list)", 8, this.stripTop - 6);
+
+			for (let row = 0; row < this.sim.sortedOrder.length; row++)
+			{
+				let idx = this.sim.sortedOrder[row];
+				let b = this.sim.boxes[idx];
+				let overlapping = this.sim.overlapSet.has(idx);
+				let y = this.stripTop + row * rowH + 2;
+
+				c.fillStyle = overlapping ? "rgba(230,30,30,0.55)" : "rgba(70,115,229,0.45)";
+				c.strokeStyle = overlapping ? "#e61e1e" : "#4673e5";
+				c.fillRect(b.minX, y, Math.max(2, b.hw * 2), Math.max(2, rowH - 3));
+				c.strokeRect(b.minX, y, Math.max(2, b.hw * 2), Math.max(2, rowH - 3));
+			}
+		}
+
+		// visualize the sorted sweep list when the sweep axis is y (strip right of the arena)
+		drawYStrip()
+		{
+			let c = this.c;
+			let n = this.sim.boxes.length;
+			let colW = Math.min(18, this.stripWidth / Math.max(n, 1));
+
+			c.fillStyle = "#f5f7ff";
+			c.fillRect(this.stripLeft, 0, this.stripWidth, this.arenaHeight);
+			c.strokeStyle = "#999999";
+			c.strokeRect(this.stripLeft, 0, this.stripWidth, this.arenaHeight);
+
+			c.save();
+			c.translate(this.stripLeft + 16, 8);
+			c.rotate(Math.PI / 2);
+			c.fillStyle = "#4b5563";
+			c.font = "13px Inter, sans-serif";
+			c.fillText("Boxes sorted by their lower y-endpoint (the sweep list)", 0, 0);
+			c.restore();
+
+			for (let col = 0; col < this.sim.sortedOrder.length; col++)
+			{
+				let idx = this.sim.sortedOrder[col];
+				let b = this.sim.boxes[idx];
+				let overlapping = this.sim.overlapSet.has(idx);
+				let x = this.stripLeft + col * colW + 2;
+
+				c.fillStyle = overlapping ? "rgba(230,30,30,0.55)" : "rgba(70,115,229,0.45)";
+				c.strokeStyle = overlapping ? "#e61e1e" : "#4673e5";
+				c.fillRect(x, b.minY, Math.max(2, colW - 3), Math.max(2, b.hh * 2));
+				c.strokeRect(x, b.minY, Math.max(2, colW - 3), Math.max(2, b.hh * 2));
+			}
+		}
+
+		mainLoop()
+		{
+			let t0 = performance.now();
+
+			this.sim.simulationStep(1 / 60);
+
+			let t1 = performance.now();
+			this.timeSum += t1 - t0;
+			this.counter += 1;
+			if (this.counter % 30 == 0)
+			{
+				this.timeSum /= this.counter;
+				document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(3);
+				this.timeSum = 0.0;
+				this.counter = 0;
+			}
+
+			this.updateStats();
+			this.draw();
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));
+		}
+
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+
+		// find the topmost box under a canvas-space point, restricted to the arena
+		pickBox(pos)
+		{
+			for (let i = this.sim.boxes.length - 1; i >= 0; i--)
+			{
+				let b = this.sim.boxes[i];
+				if (pos.x >= b.minX && pos.x <= b.maxX && pos.y >= b.minY && pos.y <= b.maxY)
+					return i;
+			}
+			return -1;
+		}
+
+		mouseDown(event)
+		{
+			// left mouse button down
+			if (event.which == 1)
+			{
+				let pos = this.getMousePos(this.canvas, event);
+				this.selectedBox = this.pickBox(pos);
+				this.draw();
+			}
+		}
+
+		getMousePos(canvas, event)
+		{
+			const rect = canvas.getBoundingClientRect();
+			const scaleX = canvas.width / rect.width;		// buffer / displayed size
+			const scaleY = canvas.height / rect.height;
+			return {
+				x: (event.clientX - rect.left) * scaleX,
+				y: (event.clientY - rect.top) * scaleY
+			};
+		}
+
+		mouseMove(event)
+		{
+			if (this.selectedBox != -1)
+			{
+				let pos = this.getMousePos(this.canvas, event);
+				let b = this.sim.boxes[this.selectedBox];
+
+				// dragging stops the box so it can be positioned precisely
+				b.vx = 0;
+				b.vy = 0;
+				b.x = Math.min(Math.max(pos.x, b.hw), this.arenaWidth - b.hw);
+				b.y = Math.min(Math.max(pos.y, b.hh), this.arenaHeight - b.hh);
+
+				// re-run the broad phase immediately so dragging gives instant feedback
+				this.sim.detectCollisions();
+				this.updateStats();
+				this.draw();
+			}
+		}
+
+		mouseUp(event)
+		{
+			this.selectedBox = -1;
+		}
+
+		// Convert the first touch point to a plain {clientX, clientY} object
+		// so it can be passed directly to the existing mouse handlers.
+		getTouchClient(event)
+		{
+			const t = event.touches.length > 0 ? event.touches[0] : event.changedTouches[0];
+			return { clientX: t.clientX, clientY: t.clientY };
+		}
+
+		touchStart(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseDown({ which: 1, ...this.getTouchClient(event) });
+		}
+
+		touchMove(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseMove(this.getTouchClient(event));
+		}
+
+		touchEnd(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 0)
+				this.mouseUp(event);
+		}
+	}
+
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>

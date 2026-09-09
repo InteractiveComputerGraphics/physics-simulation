@@ -1,0 +1,873 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Lin-Canny Algorithm</title>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>Lin-Canny Algorithm</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="70%">
+		<col width="30%">
+		<tr>
+			<td>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="960" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+					<p class="canvas-hint">Drag either polygon to reposition it and watch the tracked closest features (orange / pink) update.</p>
+				</div>
+			</td>
+			<td>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Distance (Lin-Canny)</label>
+						<span class="stat-value"><span id="distanceLC">0.00</span> px</span>
+
+						<label>Distance (brute force)</label>
+						<span class="stat-value"><span id="distanceBF">0.00</span> px</span>
+
+						<label>Feature A</label>
+						<span class="stat-value"><span id="featureA">-</span></span>
+
+						<label>Feature B</label>
+						<span class="stat-value"><span id="featureB">-</span></span>
+
+						<label>Iterations (warm start)</label>
+						<span class="stat-value"><span id="iterWarm">0</span></span>
+
+						<label>Iterations (cold restart)</label>
+						<span class="stat-value"><span id="iterCold">0</span></span>
+
+						<label># vertices A / B</label>
+						<span class="stat-value"><span id="numVertsA">0</span> / <span id="numVertsB">0</span></span>
+
+						<label>Time per step</label>
+						<span class="stat-value"><span id="timePerStep">0.00</span> ms</span>
+
+						<label for="numVerticesAInput">Vertices A (target)</label>
+						<input onchange="gui.restart()" id="numVerticesAInput" type="number" value="7" min="4" max="10" step="1">
+
+						<label for="numVerticesBInput">Vertices B (target)</label>
+						<input onchange="gui.restart()" id="numVerticesBInput" type="number" value="6" min="4" max="10" step="1">
+
+						<label for="speedInput">Speed</label>
+						<input onchange="gui.restart()" id="speedInput" type="number" value="30" min="0" step="5">
+
+						<label for="modeInput">Mode</label>
+						<select onchange="gui.setMode(this.value)" id="modeInput">
+							<option value="continuous" selected="selected">Continuous (auto-track)</option>
+							<option value="step">Step-by-step (manual)</option>
+						</select>
+
+						<div class="full-width">
+							<button onclick="gui.restart()" id="restart">&#9654; Restart</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.doPause()" id="Pause" class="btn-secondary">&#9646;&#9646; Pause</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.step()" id="step" class="btn-secondary">Step once</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.convergeNow()" id="convergeNow" class="btn-secondary">Converge now</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.resetWalk()" id="resetWalk" class="btn-secondary">Reset walk (cold start)</button>
+						</div>
+						<div class="full-width" id="stepLog" style="font-size:0.8rem;color:#4b5563;background:#f5f7ff;border:1px solid #dde3f8;border-radius:8px;padding:6px 8px;min-height:24px;"></div>
+					</div>
+				</div>
+			</td>
+		</tr>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
+			<h2>Lin-Canny: closest features via Voronoi regions</h2>
+			<p>
+			Given two convex polygons, many algorithms (continuous collision detection, distance-based contact handling, path planning) need the pair of points on their boundaries that are closest to each other, together with the separation distance. Testing every vertex/edge of polygon A against every vertex/edge of polygon B directly is only $O(n_A \cdot n_B)$, cheap once, but far too much when this query has to run every single time step for every pair of nearby objects in a simulation. The <b>Lin-Canny algorithm</b> [LC91] instead maintains a single candidate pair of <b>features</b> (a vertex or an edge on each polygon) and updates it incrementally, needing only a handful of tests per step once it has locked on.
+			</p>
+
+			<h3>Voronoi regions of a convex polygon</h3>
+			<p>
+			Every point in the plane has a uniquely closest feature on a convex polygon's boundary (a vertex or an edge), and the set of points that are closest to a particular feature is called that feature's <b>Voronoi region</b>:
+			</p>
+			<ul>
+				<li>An <b>edge</b>'s Voronoi region is the infinite strip perpendicular to the edge, bounded by the two lines through its endpoints that are perpendicular to it.</li>
+				<li>A <b>vertex</b>'s Voronoi region is the wedge outside the polygon bounded by the perpendiculars of its two adjacent edges &mdash; exactly the two dashed rays drawn from the currently tracked vertex in the simulation.</li>
+			</ul>
+			<p>
+			These regions partition the whole plane (outside the polygon) without gaps or overlaps. Consequently, a candidate feature $f$ is the closest feature to a point $p$ if and only if $p$ lies in $f$'s Voronoi region &mdash; a test that only needs the two edges neighboring $f$, not the whole polygon.
+			</p>
+
+			<h3>The algorithm</h3>
+			<p>Starting from a candidate pair of features $(f_A, f_B)$ (one on each polygon), each iteration performs a simple local check:</p>
+			<ol>
+				<li>Compute the closest points $p_A \in f_A$ and $p_B \in f_B$ between the current pair of features (point&ndash;point, point&ndash;segment or segment&ndash;segment, depending on whether $f_A, f_B$ are vertices or edges).</li>
+				<li>Test whether $p_B$ lies in the Voronoi region of $f_A$. If not, $f_A$ cannot be part of the closest pair yet &mdash; replace it with the neighboring feature on the side of the violated boundary and repeat from step 1.</li>
+				<li>Otherwise, test whether $p_A$ lies in the Voronoi region of $f_B$. If not, replace $f_B$ with its corresponding neighbor and repeat from step 1.</li>
+				<li>If both regions already contain the other feature's point, the pair $(f_A, f_B)$ is the closest pair of features, and $\|p_A - p_B\|$ is the separation distance.</li>
+			</ol>
+			<p>
+			Because the polygons are convex, this purely local, greedy walk is guaranteed to reach the <em>globally</em> closest pair &mdash; it can never get stuck in a wrong local candidate, which is precisely the property the original 1991 paper proves. Compare the "Distance (Lin-Canny)" and "Distance (brute force)" statistics: apart from rare, momentarily unconverged states in step-by-step mode, they always agree, confirming this on every frame.
+			</p>
+
+			<h3>Why this is fast: temporal coherence</h3>
+			<p>
+			Object shapes and positions rarely change much from one simulation step to the next. If the walk is <em>restarted from the pair found in the previous step</em> ("warm start"), it typically only needs zero to a few iterations to re-converge, since the true closest pair has usually not moved far either. Restarting from an arbitrary fixed feature every time ("cold start") needs far more iterations in general, up to $O(n_A + n_B)$ in the worst case. The "Iterations (warm start)" and "Iterations (cold restart)" statistics make this difference directly measurable: watch how much smaller the warm count stays as the polygons drift and rotate, compared to the cold count computed from scratch for reference on every frame.
+			</p>
+			<p>
+			Use "Reset walk (cold start)" to throw away the current tracked pair and see how many steps <em>are actually spent</em> recovering it, or switch to step-by-step mode to single-step through the walk and watch each Voronoi-region test and feature update individually.
+			</p>
+
+			<h3>Properties and limitations</h3>
+			<ul>
+				<li><b>Expected near-constant cost per step</b> once locked on, versus the $O(n_A \cdot n_B)$ of testing every feature pair &mdash; the same "exploit temporal coherence to avoid brute force" idea already used by the axis choice and re-sorting in the <a href="sweep_and_prune.html">sweep and prune</a> broad phase.</li>
+				<li><b>Requires convex polygons</b> (or, in 3D, convex polytopes with a similarly defined Voronoi structure per vertex/edge/face) &mdash; the correctness proof relies on convexity.</li>
+				<li><b>Designed for separated objects.</b> This simplified version does not special-case interpenetration; the original algorithm detects when the polygons start to overlap and switches to a separate penetration-depth computation instead of continuing the walk.</li>
+				<li><b>An alternative:</b> the Gilbert&ndash;Johnson&ndash;Keerthi (GJK) algorithm [GJK88] solves the same closest-distance problem without needing explicit per-feature neighbor connectivity, which makes it easier to generalize to arbitrary convex shapes (not just polygons/polytopes given as an explicit vertex/edge graph).</li>
+			</ul>
+
+			<h3>References</h3>
+			<ul>
+			<li>[LC91] Ming C. Lin, John F. Canny. A Fast Algorithm for Incremental Distance Calculation. In Proceedings of the IEEE International Conference on Robotics and Automation, 1991.</li>
+			<li>[GJK88] E. G. Gilbert, D. W. Johnson, S. S. Keerthi. A Fast Procedure for Computing the Distance Between Complex Objects in Three-Dimensional Space. IEEE Journal of Robotics and Automation, 1988.</li>
+			<li>[Eri04] Christer Ericson. Real-Time Collision Detection. Morgan Kaufmann, 2004.</li>
+			</ul>
+	</div>
+
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	// ---- small 2D vector helpers ----
+	function sub(a, b)   { return { x: a.x - b.x, y: a.y - b.y }; }
+	function add(a, b)   { return { x: a.x + b.x, y: a.y + b.y }; }
+	function scale(a, s) { return { x: a.x * s, y: a.y * s }; }
+	function dot(a, b)   { return a.x * b.x + a.y * b.y; }
+	function len(a)      { return Math.sqrt(dot(a, a)); }
+	function clamp01(x)  { return Math.max(0, Math.min(1, x)); }
+	function normalize(v)
+	{
+		let l = len(v);
+		return l > 1e-9 ? { x: v.x / l, y: v.y / l } : { x: 0, y: 0 };
+	}
+
+	// closest point on segment [v0,v1] to point p
+	function closestPointOnSegment(p, v0, v1)
+	{
+		let d = sub(v1, v0);
+		let denom = dot(d, d);
+		let t = denom > 1e-12 ? clamp01(dot(sub(p, v0), d) / denom) : 0;
+		return add(v0, scale(d, t));
+	}
+
+	// closest points between two segments [p0,p1] and [q0,q1]
+	// (standard formulation, e.g. Ericson, Real-Time Collision Detection)
+	function closestPointsSegmentSegment(p0, p1, q0, q1)
+	{
+		const EPS = 1e-12;
+		let d1 = sub(p1, p0);
+		let d2 = sub(q1, q0);
+		let r = sub(p0, q0);
+		let a = dot(d1, d1);
+		let e = dot(d2, d2);
+		let f = dot(d2, r);
+		let s, t;
+
+		if (a <= EPS && e <= EPS)
+		{
+			s = 0; t = 0;
+		}
+		else if (a <= EPS)
+		{
+			s = 0;
+			t = clamp01(f / e);
+		}
+		else
+		{
+			let c = dot(d1, r);
+			if (e <= EPS)
+			{
+				t = 0;
+				s = clamp01(-c / a);
+			}
+			else
+			{
+				let b = dot(d1, d2);
+				let denom = a * e - b * b;
+				s = denom > EPS ? clamp01((b * f - c * e) / denom) : 0;
+				t = (b * s + f) / e;
+				if (t < 0)      { t = 0; s = clamp01(-c / a); }
+				else if (t > 1) { t = 1; s = clamp01((b - c) / a); }
+			}
+		}
+		return { pA: add(p0, scale(d1, s)), pB: add(q0, scale(d2, t)) };
+	}
+
+	// convex hull (Andrew's monotone chain); returns points in CCW order
+	function convexHull(points)
+	{
+		let pts = points.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+		const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+		let lower = [];
+		for (let p of pts)
+		{
+			while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0)
+				lower.pop();
+			lower.push(p);
+		}
+		let upper = [];
+		for (let i = pts.length - 1; i >= 0; i--)
+		{
+			let p = pts[i];
+			while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0)
+				upper.pop();
+			upper.push(p);
+		}
+		lower.pop(); upper.pop();
+		return lower.concat(upper);
+	}
+
+	// generate a random convex polygon (local coordinates, centered on the origin)
+	// by taking the convex hull of a larger set of random points -- this guarantees
+	// convexity, which the Voronoi-region walk below relies on
+	function randomConvexPolygon(targetVertices, radius)
+	{
+		let pts = [];
+		for (let i = 0; i < targetVertices * 4; i++)
+		{
+			let angle = Math.random() * 2 * Math.PI;
+			let r = radius * (0.35 + 0.65 * Math.random());
+			pts.push({ x: r * Math.cos(angle), y: r * Math.sin(angle) });
+		}
+		return convexHull(pts);
+	}
+
+	function transformPolygon(local, center, angle)
+	{
+		let ca = Math.cos(angle), sa = Math.sin(angle);
+		return local.map(p => ({
+			x: center.x + p.x * ca - p.y * sa,
+			y: center.y + p.x * sa + p.y * ca
+		}));
+	}
+
+	function pointInConvexPolygon(poly, p)
+	{
+		let n = poly.length;
+		for (let i = 0; i < n; i++)
+		{
+			let a = poly[i], b = poly[(i + 1) % n];
+			if ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x) < 0)
+				return false;
+		}
+		return true;
+	}
+
+	function describeFeature(f)
+	{
+		return f.type === 'vertex' ? `vertex ${f.index}` : `edge ${f.index}`;
+	}
+
+	// move to the neighboring feature on the side that violated the Voronoi test
+	function neighborFeature(poly, f, move)
+	{
+		let n = poly.length;
+		if (f.type === 'edge')
+			return move === 'prev' ? { type: 'vertex', index: f.index } : { type: 'vertex', index: (f.index + 1) % n };
+		else
+			return move === 'prevEdge' ? { type: 'edge', index: (f.index - 1 + n) % n } : { type: 'edge', index: f.index };
+	}
+
+	// does point p lie in feature f's Voronoi region? if not, which neighbor to move to?
+	function voronoiTest(poly, f, p)
+	{
+		let n = poly.length;
+		if (f.type === 'edge')
+		{
+			let v0 = poly[f.index], v1 = poly[(f.index + 1) % n];
+			let d = sub(v1, v0);
+			let denom = dot(d, d);
+			let t = denom > 1e-12 ? dot(sub(p, v0), d) / denom : 0.5;
+			if (t < 0) return { inside: false, move: 'prev' };
+			if (t > 1) return { inside: false, move: 'next' };
+			return { inside: true };
+		}
+		else
+		{
+			let i = f.index;
+			let vPrev = poly[(i - 1 + n) % n], v = poly[i], vNext = poly[(i + 1) % n];
+			let dPrev = sub(v, vPrev);
+			let dNext = sub(vNext, v);
+			let denomPrev = dot(dPrev, dPrev);
+			let denomNext = dot(dNext, dNext);
+			let tPrev = denomPrev > 1e-12 ? dot(sub(p, vPrev), dPrev) / denomPrev : 1;
+			let tNext = denomNext > 1e-12 ? dot(sub(p, v), dNext) / denomNext : 0;
+			if (tPrev < 1) return { inside: false, move: 'prevEdge' };
+			if (tNext > 0) return { inside: false, move: 'nextEdge' };
+			return { inside: true };
+		}
+	}
+
+	// closest points between the current pair of features (vertex/edge combinations)
+	function featurePointsForClosest(polyA, fA, polyB, fB)
+	{
+		if (fA.type === 'vertex' && fB.type === 'vertex')
+			return { pA: polyA[fA.index], pB: polyB[fB.index] };
+
+		if (fA.type === 'vertex' && fB.type === 'edge')
+		{
+			let v0 = polyB[fB.index], v1 = polyB[(fB.index + 1) % polyB.length];
+			let pA = polyA[fA.index];
+			return { pA, pB: closestPointOnSegment(pA, v0, v1) };
+		}
+		if (fA.type === 'edge' && fB.type === 'vertex')
+		{
+			let v0 = polyA[fA.index], v1 = polyA[(fA.index + 1) % polyA.length];
+			let pB = polyB[fB.index];
+			return { pA: closestPointOnSegment(pB, v0, v1), pB };
+		}
+		let a0 = polyA[fA.index], a1 = polyA[(fA.index + 1) % polyA.length];
+		let b0 = polyB[fB.index], b1 = polyB[(fB.index + 1) % polyB.length];
+		return closestPointsSegmentSegment(a0, a1, b0, b1);
+	}
+
+	// one atomic iteration of the Lin-Canny walk: test A, else test B, else converged
+	function walkStep(polyA, fA, polyB, fB)
+	{
+		let { pA, pB } = featurePointsForClosest(polyA, fA, polyB, fB);
+
+		let testA = voronoiTest(polyA, fA, pB);
+		if (!testA.inside)
+		{
+			let newFA = neighborFeature(polyA, fA, testA.move);
+			return { fA: newFA, fB, moved: 'A', description: `A: ${describeFeature(fA)} → ${describeFeature(newFA)} (B's point left A's Voronoi region)` };
+		}
+		let testB = voronoiTest(polyB, fB, pA);
+		if (!testB.inside)
+		{
+			let newFB = neighborFeature(polyB, fB, testB.move);
+			return { fA, fB: newFB, moved: 'B', description: `B: ${describeFeature(fB)} → ${describeFeature(newFB)} (A's point left B's Voronoi region)` };
+		}
+		return { fA, fB, moved: null, description: `Converged: both features' Voronoi regions already contain the other feature's point.` };
+	}
+
+	// repeat walkStep until convergence (or a generous iteration cap)
+	function walkClosestFeatures(polyA, polyB, fA0, fB0, maxIter)
+	{
+		let fA = fA0, fB = fB0, iter = 0;
+		while (iter < maxIter)
+		{
+			let r = walkStep(polyA, fA, polyB, fB);
+			fA = r.fA; fB = r.fB;
+			if (r.moved === null) break;
+			iter++;
+		}
+		let { pA, pB } = featurePointsForClosest(polyA, fA, polyB, fB);
+		return { fA, fB, pA, pB, distance: len(sub(pA, pB)), iterations: iter };
+	}
+
+	// ground truth used only for validation: check every pair of edges directly
+	// (vertex cases are covered automatically since the closest point on a
+	// segment clamps to its endpoints)
+	function bruteForceMinDistance(polyA, polyB)
+	{
+		let best = Infinity, bestPA = null, bestPB = null;
+		let nA = polyA.length, nB = polyB.length;
+		for (let i = 0; i < nA; i++)
+		{
+			let a0 = polyA[i], a1 = polyA[(i + 1) % nA];
+			for (let j = 0; j < nB; j++)
+			{
+				let b0 = polyB[j], b1 = polyB[(j + 1) % nB];
+				let { pA, pB } = closestPointsSegmentSegment(a0, a1, b0, b1);
+				let d = len(sub(pA, pB));
+				if (d < best) { best = d; bestPA = pA; bestPB = pB; }
+			}
+		}
+		return { distance: best, pA: bestPA, pB: bestPB };
+	}
+
+	class Simulation
+	{
+		constructor(numVertsA, numVertsB, speed, arenaWidth, arenaHeight)
+		{
+			this.arenaWidth = arenaWidth;
+			this.arenaHeight = arenaHeight;
+			this.mode = 'continuous';
+
+			this.localA = randomConvexPolygon(numVertsA, 90);
+			this.localB = randomConvexPolygon(numVertsB, 90);
+			this.radiusA = Math.max(...this.localA.map(p => len(p)));
+			this.radiusB = Math.max(...this.localB.map(p => len(p)));
+
+			this.centerA = { x: arenaWidth * 0.28, y: arenaHeight * 0.5 };
+			this.centerB = { x: arenaWidth * 0.72, y: arenaHeight * 0.5 };
+			this.angleA = 0;
+			this.angleB = 0;
+
+			let angleVelA = Math.random() * 2 * Math.PI;
+			let angleVelB = Math.random() * 2 * Math.PI;
+			this.velA = { x: Math.cos(angleVelA) * speed, y: Math.sin(angleVelA) * speed };
+			this.velB = { x: Math.cos(angleVelB) * speed, y: Math.sin(angleVelB) * speed };
+			this.angVelA = (Math.random() - 0.5) * 0.6;
+			this.angVelB = (Math.random() - 0.5) * 0.6;
+
+			this.fA = { type: 'vertex', index: 0 };
+			this.fB = { type: 'vertex', index: 0 };
+
+			this.updateGeometry();
+			this.converge();
+		}
+
+		updateGeometry()
+		{
+			this.polyA = transformPolygon(this.localA, this.centerA, this.angleA);
+			this.polyB = transformPolygon(this.localB, this.centerB, this.angleB);
+		}
+
+		bounceWall(center, vel, radius)
+		{
+			if (center.x - radius < 0)                { center.x = radius;                    vel.x = Math.abs(vel.x); }
+			if (center.x + radius > this.arenaWidth)  { center.x = this.arenaWidth - radius;  vel.x = -Math.abs(vel.x); }
+			if (center.y - radius < 0)                { center.y = radius;                    vel.y = Math.abs(vel.y); }
+			if (center.y + radius > this.arenaHeight) { center.y = this.arenaHeight - radius; vel.y = -Math.abs(vel.y); }
+		}
+
+		integrate(dt)
+		{
+			this.centerA.x += this.velA.x * dt; this.centerA.y += this.velA.y * dt; this.angleA += this.angVelA * dt;
+			this.centerB.x += this.velB.x * dt; this.centerB.y += this.velB.y * dt; this.angleB += this.angVelB * dt;
+			this.bounceWall(this.centerA, this.velA, this.radiusA);
+			this.bounceWall(this.centerB, this.velB, this.radiusB);
+			this.updateGeometry();
+		}
+
+		// compute (but do not apply) a warm walk from the current features and a
+		// cold walk from a fixed default -- used both for display and for converge()
+		computeStats()
+		{
+			let maxIter = 4 * (this.polyA.length + this.polyB.length) + 8;
+			this._warm = walkClosestFeatures(this.polyA, this.polyB, this.fA, this.fB, maxIter);
+			this.iterationsWarm = this._warm.iterations;
+
+			let coldStart = { type: 'vertex', index: 0 };
+			let cold = walkClosestFeatures(this.polyA, this.polyB, coldStart, coldStart, maxIter);
+			this.iterationsCold = cold.iterations;
+
+			this.bruteForceDistance = bruteForceMinDistance(this.polyA, this.polyB).distance;
+		}
+
+		// continuous mode: fully re-converge every step from the previous pair (warm start)
+		converge()
+		{
+			this.computeStats();
+			this.fA = this._warm.fA; this.fB = this._warm.fB;
+			this.currentPA = this._warm.pA; this.currentPB = this._warm.pB; this.currentDistance = this._warm.distance;
+		}
+
+		// step mode: keep the tracked pair as-is, just refresh points/stats for display
+		refreshPassive()
+		{
+			this.computeStats();
+			let { pA, pB } = featurePointsForClosest(this.polyA, this.fA, this.polyB, this.fB);
+			this.currentPA = pA; this.currentPB = pB; this.currentDistance = len(sub(pA, pB));
+		}
+
+		// perform exactly one Voronoi-region test/update (used by the "Step once" button)
+		manualStep()
+		{
+			let r = walkStep(this.polyA, this.fA, this.polyB, this.fB);
+			this.fA = r.fA; this.fB = r.fB;
+			return r;
+		}
+
+		resetWalk()
+		{
+			this.fA = { type: 'vertex', index: 0 };
+			this.fB = { type: 'vertex', index: 0 };
+		}
+	}
+
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.dragTarget = null;
+			this.stepLog = [];
+
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);
+			this.canvas.addEventListener("touchstart", this.touchStart.bind(this), { passive: false });
+			this.canvas.addEventListener("touchmove", this.touchMove.bind(this), { passive: false });
+			this.canvas.addEventListener("touchend", this.touchEnd.bind(this), { passive: false });
+		}
+
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			let numVertsA = parseInt(document.getElementById('numVerticesAInput').value);
+			let numVertsB = parseInt(document.getElementById('numVerticesBInput').value);
+			let speed = parseFloat(document.getElementById('speedInput').value);
+
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.dragTarget = null;
+			this.stepLog = [];
+			document.getElementById("stepLog").innerHTML = "";
+
+			delete this.sim;
+			this.sim = new Simulation(numVertsA, numVertsB, speed, this.canvas.width, this.canvas.height);
+			this.sim.mode = document.getElementById('modeInput').value;
+			this.pause = (this.sim.mode === 'step');
+
+			this.refresh();
+			if (!this.pause)
+				this.mainLoop();
+		}
+
+		setMode(mode)
+		{
+			this.sim.mode = mode;
+			if (mode === 'step')
+			{
+				this.pause = true;
+				this.refresh();
+			}
+			else
+			{
+				this.pause = false;
+				this.mainLoop();
+			}
+		}
+
+		step()
+		{
+			let r = this.sim.manualStep();
+			this.logStep(r.description);
+			this.sim.refreshPassive();
+			this.updateStats();
+			this.draw();
+		}
+
+		convergeNow()
+		{
+			let maxIter = 4 * (this.sim.polyA.length + this.sim.polyB.length) + 8;
+			let result = walkClosestFeatures(this.sim.polyA, this.sim.polyB, this.sim.fA, this.sim.fB, maxIter);
+			this.sim.fA = result.fA; this.sim.fB = result.fB;
+			this.logStep(`Converged after ${result.iterations} more step(s).`);
+			this.refresh();
+		}
+
+		resetWalk()
+		{
+			this.sim.resetWalk();
+			this.stepLog = [];
+			document.getElementById("stepLog").innerHTML = "";
+			this.refresh();
+		}
+
+		logStep(text)
+		{
+			this.stepLog.unshift(text);
+			if (this.stepLog.length > 6)
+				this.stepLog.length = 6;
+			document.getElementById("stepLog").innerHTML = this.stepLog.map(s => `<div>${s}</div>`).join('');
+		}
+
+		// recompute the algorithm's result (continuous: converge, step: passive refresh) and redraw
+		refresh()
+		{
+			if (this.sim.mode === 'continuous')
+				this.sim.converge();
+			else
+				this.sim.refreshPassive();
+			this.updateStats();
+			this.draw();
+		}
+
+		updateStats()
+		{
+			document.getElementById("distanceLC").innerHTML = this.sim.currentDistance.toFixed(2);
+			document.getElementById("distanceBF").innerHTML = this.sim.bruteForceDistance.toFixed(2);
+			document.getElementById("featureA").innerHTML = describeFeature(this.sim.fA);
+			document.getElementById("featureB").innerHTML = describeFeature(this.sim.fB);
+			document.getElementById("iterWarm").innerHTML = this.sim.iterationsWarm;
+			document.getElementById("iterCold").innerHTML = this.sim.iterationsCold;
+			document.getElementById("numVertsA").innerHTML = this.sim.polyA.length;
+			document.getElementById("numVertsB").innerHTML = this.sim.polyB.length;
+
+			let mismatch = (this.sim.mode === 'continuous') && Math.abs(this.sim.currentDistance - this.sim.bruteForceDistance) > 1.0;
+			document.getElementById("distanceLC").style.color = mismatch ? "#e61e1e" : "";
+		}
+
+		drawPolygon(poly, fillStyle, strokeStyle)
+		{
+			let c = this.c;
+			c.beginPath();
+			c.moveTo(poly[0].x, poly[0].y);
+			for (let i = 1; i < poly.length; i++)
+				c.lineTo(poly[i].x, poly[i].y);
+			c.closePath();
+			c.fillStyle = fillStyle;
+			c.fill();
+			c.strokeStyle = strokeStyle;
+			c.lineWidth = 2;
+			c.stroke();
+		}
+
+		drawFeatureHighlight(poly, f, color)
+		{
+			let c = this.c;
+			c.fillStyle = color;
+			c.strokeStyle = color;
+			if (f.type === 'vertex')
+			{
+				let v = poly[f.index];
+				c.beginPath();
+				c.arc(v.x, v.y, 7, 0, Math.PI * 2);
+				c.fill();
+			}
+			else
+			{
+				let v0 = poly[f.index], v1 = poly[(f.index + 1) % poly.length];
+				c.lineWidth = 4;
+				c.beginPath();
+				c.moveTo(v0.x, v0.y);
+				c.lineTo(v1.x, v1.y);
+				c.stroke();
+			}
+		}
+
+		drawSeg(p0, p1)
+		{
+			let c = this.c;
+			c.beginPath();
+			c.moveTo(p0.x, p0.y);
+			c.lineTo(p1.x, p1.y);
+			c.stroke();
+		}
+
+		// dashed rays/lines visualizing the boundary of a feature's Voronoi region
+		drawVoronoiBoundary(poly, f, color)
+		{
+			let c = this.c;
+			let n = poly.length;
+			let rayLen = 70;
+			c.save();
+			c.strokeStyle = color;
+			c.globalAlpha = 0.6;
+			c.setLineDash([5, 5]);
+			c.lineWidth = 2;
+			if (f.type === 'edge')
+			{
+				let v0 = poly[f.index], v1 = poly[(f.index + 1) % n];
+				let d = normalize(sub(v1, v0));
+				let nrm = { x: d.y, y: -d.x };
+				this.drawSeg(sub(v0, scale(nrm, rayLen)), add(v0, scale(nrm, rayLen)));
+				this.drawSeg(sub(v1, scale(nrm, rayLen)), add(v1, scale(nrm, rayLen)));
+			}
+			else
+			{
+				let i = f.index;
+				let vPrev = poly[(i - 1 + n) % n], v = poly[i], vNext = poly[(i + 1) % n];
+				let dPrev = normalize(sub(v, vPrev));
+				let dNext = normalize(sub(vNext, v));
+				let nrmPrev = { x: dPrev.y, y: -dPrev.x };
+				let nrmNext = { x: dNext.y, y: -dNext.x };
+				this.drawSeg(v, add(v, scale(nrmPrev, rayLen)));
+				this.drawSeg(v, add(v, scale(nrmNext, rayLen)));
+			}
+			c.restore();
+		}
+
+		draw()
+		{
+			let c = this.c;
+			c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+			c.fillStyle = "#ffffff";
+			c.fillRect(0, 0, this.canvas.width, this.canvas.height);
+			c.strokeStyle = "#999999";
+			c.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+
+			this.drawPolygon(this.sim.polyA, "rgba(70,115,229,0.18)", "#4673e5");
+			this.drawPolygon(this.sim.polyB, "rgba(16,185,129,0.18)", "#10b981");
+
+			this.drawVoronoiBoundary(this.sim.polyA, this.sim.fA, "#f59e0b");
+			this.drawVoronoiBoundary(this.sim.polyB, this.sim.fB, "#9d174d");
+
+			this.drawFeatureHighlight(this.sim.polyA, this.sim.fA, "#f59e0b");
+			this.drawFeatureHighlight(this.sim.polyB, this.sim.fB, "#9d174d");
+
+			if (this.sim.currentPA && this.sim.currentPB)
+			{
+				c.save();
+				c.strokeStyle = "#e61e1e";
+				c.setLineDash([6, 4]);
+				c.lineWidth = 2;
+				c.beginPath();
+				c.moveTo(this.sim.currentPA.x, this.sim.currentPA.y);
+				c.lineTo(this.sim.currentPB.x, this.sim.currentPB.y);
+				c.stroke();
+				c.restore();
+
+				c.fillStyle = "#e61e1e";
+				for (let p of [this.sim.currentPA, this.sim.currentPB])
+				{
+					c.beginPath();
+					c.arc(p.x, p.y, 5, 0, Math.PI * 2);
+					c.fill();
+				}
+
+				let mid = { x: (this.sim.currentPA.x + this.sim.currentPB.x) / 2, y: (this.sim.currentPA.y + this.sim.currentPB.y) / 2 };
+				c.fillStyle = "#4b5563";
+				c.font = "13px Inter, sans-serif";
+				c.fillText(`d = ${this.sim.currentDistance.toFixed(1)}`, mid.x + 8, mid.y - 8);
+			}
+		}
+
+		mainLoop()
+		{
+			let t0 = performance.now();
+
+			if (!this.pause)
+				this.sim.integrate(1 / 60);
+			this.refresh();
+
+			let t1 = performance.now();
+			this.timeSum += t1 - t0;
+			this.counter += 1;
+			if (this.counter % 30 == 0)
+			{
+				this.timeSum /= this.counter;
+				document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(3);
+				this.timeSum = 0.0;
+				this.counter = 0;
+			}
+
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));
+		}
+
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+
+		pickPolygon(pos)
+		{
+			if (pointInConvexPolygon(this.sim.polyA, pos)) return 'A';
+			if (pointInConvexPolygon(this.sim.polyB, pos)) return 'B';
+			return null;
+		}
+
+		mouseDown(event)
+		{
+			if (event.which == 1)
+			{
+				let pos = this.getMousePos(this.canvas, event);
+				this.dragTarget = this.pickPolygon(pos);
+				if (this.dragTarget === 'A') { this.sim.velA.x = 0; this.sim.velA.y = 0; }
+				if (this.dragTarget === 'B') { this.sim.velB.x = 0; this.sim.velB.y = 0; }
+			}
+		}
+
+		getMousePos(canvas, event)
+		{
+			const rect = canvas.getBoundingClientRect();
+			const scaleX = canvas.width / rect.width;
+			const scaleY = canvas.height / rect.height;
+			return {
+				x: (event.clientX - rect.left) * scaleX,
+				y: (event.clientY - rect.top) * scaleY
+			};
+		}
+
+		mouseMove(event)
+		{
+			if (this.dragTarget)
+			{
+				let pos = this.getMousePos(this.canvas, event);
+				let center = this.dragTarget === 'A' ? this.sim.centerA : this.sim.centerB;
+				let radius = this.dragTarget === 'A' ? this.sim.radiusA : this.sim.radiusB;
+				center.x = Math.min(Math.max(pos.x, radius), this.sim.arenaWidth - radius);
+				center.y = Math.min(Math.max(pos.y, radius), this.sim.arenaHeight - radius);
+				this.sim.updateGeometry();
+				this.refresh();
+			}
+		}
+
+		mouseUp(event)
+		{
+			this.dragTarget = null;
+		}
+
+		getTouchClient(event)
+		{
+			const t = event.touches.length > 0 ? event.touches[0] : event.changedTouches[0];
+			return { clientX: t.clientX, clientY: t.clientY };
+		}
+
+		touchStart(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseDown({ which: 1, ...this.getTouchClient(event) });
+		}
+
+		touchMove(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseMove(this.getTouchClient(event));
+		}
+
+		touchEnd(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 0)
+				this.mouseUp(event);
+		}
+	}
+
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>

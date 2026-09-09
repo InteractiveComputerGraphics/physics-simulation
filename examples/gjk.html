@@ -1,0 +1,936 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>GJK Algorithm</title>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>GJK Algorithm</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="70%">
+		<col width="30%">
+		<tr>
+			<td>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="960" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+					<p class="canvas-hint">Drag either polygon (left panel) with the mouse; the right panel shows the same query in Minkowski-difference space.</p>
+				</div>
+			</td>
+			<td>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Distance (GJK)</label>
+						<span class="stat-value"><span id="distanceGJK">0.00</span> px</span>
+
+						<label>Distance (brute force)</label>
+						<span class="stat-value"><span id="distanceBF">0.00</span> px</span>
+
+						<label>Status</label>
+						<span class="stat-value"><span id="status">-</span></span>
+
+						<label>Support queries</label>
+						<span class="stat-value"><span id="numQueries">0</span></span>
+
+						<label>Simplex</label>
+						<span class="stat-value"><span id="simplexKind">-</span></span>
+
+						<label># vertices A / B</label>
+						<span class="stat-value"><span id="numVertsA">0</span> / <span id="numVertsB">0</span></span>
+
+						<label>Time per step</label>
+						<span class="stat-value"><span id="timePerStep">0.00</span> ms</span>
+
+						<label for="numVerticesAInput">Vertices A (target)</label>
+						<input onchange="gui.restart()" id="numVerticesAInput" type="number" value="7" min="4" max="10" step="1">
+
+						<label for="numVerticesBInput">Vertices B (target)</label>
+						<input onchange="gui.restart()" id="numVerticesBInput" type="number" value="6" min="4" max="10" step="1">
+
+						<label for="speedInput">Speed</label>
+						<input onchange="gui.restart()" id="speedInput" type="number" value="30" min="0" step="5">
+
+						<label for="modeInput">Mode</label>
+						<select onchange="gui.setMode(this.value)" id="modeInput">
+							<option value="continuous" selected="selected">Continuous (auto-run)</option>
+							<option value="step">Step-by-step (manual)</option>
+						</select>
+
+						<div class="full-width">
+							<button onclick="gui.restart()" id="restart">&#9654; Restart</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.doPause()" id="Pause" class="btn-secondary">&#9646;&#9646; Pause</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.step()" id="step" class="btn-secondary">Step once</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.convergeNow()" id="convergeNow" class="btn-secondary">Converge now</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.restartSearch()" id="restartSearch" class="btn-secondary">Restart search</button>
+						</div>
+						<div class="full-width" id="stepLog" style="font-size:0.8rem;color:#4b5563;background:#f5f7ff;border:1px solid #dde3f8;border-radius:8px;padding:6px 8px;min-height:24px;"></div>
+					</div>
+				</div>
+			</td>
+		</tr>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
+			<h2>GJK: closest points and overlap via the Minkowski difference</h2>
+			<p>
+			The <a href="lin_canny.html">Lin-Canny example</a> answered "how far apart are two convex polygons?" by walking along their explicit vertex/edge structure. The <b>Gilbert&ndash;Johnson&ndash;Keerthi (GJK) algorithm</b> [GJK88] answers the very same question &mdash; and, unlike that example, also directly detects overlap &mdash; using a completely different, more general trick: it never looks at the two shapes directly at all, only at a single derived shape called their <b>Minkowski difference</b>.
+			</p>
+
+			<h3>The Minkowski difference</h3>
+			<p>
+			For two convex shapes $A$ and $B$, their Minkowski difference is
+			$$A \ominus B = \{\, a - b \;:\; a \in A,\, b \in B \,\}.$$
+			$A \ominus B$ is itself convex, and it has one crucial property: <b>$A$ and $B$ overlap if and only if the origin lies inside $A \ominus B$</b> &mdash; a point $a-b = 0$ exists exactly when some $a \in A$ equals some $b \in B$. So the original question ("do $A$ and $B$ overlap, and if not, how far apart are they?") turns into "is the origin inside this one convex region, and if not, what is the closest point in it to the origin?" &mdash; a single, uniform question, independent of what kind of shapes $A$ and $B$ actually are.
+			</p>
+
+			<h3>The support function</h3>
+			<p>
+			GJK never constructs $A \ominus B$ explicitly (in general it can have far too many vertices). It only ever asks one kind of question: given a direction $d$, what is the farthest point of a shape in that direction &mdash; its <b>support point</b>, $\text{support}_S(d) = \arg\max_{p \in S} (p \cdot d)$? This immediately gives a support function for the difference itself:
+			$$\text{support}_{A \ominus B}(d) = \text{support}_A(d) - \text{support}_B(-d).$$
+			For a polygon (used here) this is a linear scan over its vertices, but the same interface works for a circle, a capsule, or any other convex primitive with a closed-form support function &mdash; which is exactly why GJK generalizes far beyond polygons, unlike an algorithm that needs explicit vertex/edge adjacency.
+			</p>
+
+			<h3>The algorithm</h3>
+			<p>GJK grows a small <b>simplex</b> (in 2D: a point, then a segment, then a triangle) out of support points, chasing the origin:</p>
+			<ol>
+				<li>Pick an arbitrary direction, get one support point of $A \ominus B$, and start the simplex with just that point.</li>
+				<li>Find the point $Q$ on the current simplex closest to the origin. This is the very same kind of Voronoi-region reasoning as in the Lin-Canny example &mdash; just applied to the abstract simplex instead of a real polygon boundary &mdash; and it discards any simplex point not needed to describe that closest feature (e.g. a triangle collapses to just its closest edge or vertex).</li>
+				<li>If the simplex already encloses the origin, $A$ and $B$ overlap &mdash; stop.</li>
+				<li>Otherwise, query a new support point $S$ in the direction from $Q$ toward the origin. If $S$ makes no further progress towards the origin than $Q$ already does, the simplex cannot be improved: stop, $\|Q\|$ is the separation distance.</li>
+				<li>Otherwise add $S$ to the (reduced) simplex and go back to step 2.</li>
+			</ol>
+			<p>
+			The actual closest points on $A$ and on $B$ ("witness points", drawn in the left panel exactly as in the Lin-Canny example) come for free: each simplex point remembers which support points of $A$ and $B$ produced it, and the same interpolation weights that place $Q$ on the simplex place the witness points on $A$ and $B$.
+			</p>
+			<p>
+			The right panel renders exactly this abstract construction: every support point ever queried (light trail), the current simplex (purple), the origin, and the current closest point with its distance &mdash; while the left panel shows the same query back in the original world space.
+			</p>
+
+			<h3>Properties and how it compares to Lin-Canny</h3>
+			<ul>
+				<li><b>More general:</b> it only needs a support function, so the same code handles circles, capsules or any convex point set &mdash; not just polygons with explicit vertex/edge neighbors.</li>
+				<li><b>Detects overlap natively:</b> the same loop that computes the distance also detects when the origin is enclosed, with no separate case needed &mdash; unlike the simplified Lin-Canny example on this site, which assumes the polygons are separated.</li>
+				<li><b>Converges in very few support queries</b> in practice (the "Support queries" counter rarely exceeds single digits here), even though, unlike Lin-Canny, this example restarts the search from scratch on every frame in continuous mode &mdash; GJK's speed comes from the simplex construction itself, not primarily from reusing the previous frame's answer (though real implementations often warm-start it too, for an extra constant-factor speedup).</li>
+				<li><b>Only finds overlap, not how much:</b> once the origin is enclosed, GJK alone does not say how deeply the shapes interpenetrate. The natural follow-up, the Expanding Polytope Algorithm (EPA) [vdB01], grows the enclosing simplex outward into a full polytope around the origin to recover the penetration depth and direction; it is not implemented in this example.</li>
+			</ul>
+			<p>
+			Together with the earlier examples, this completes a small progression: <a href="sweep_and_prune.html">sweep and prune</a> cheaply narrows many objects down to a few candidate pairs (broad phase); Lin-Canny and GJK then answer the precise question for one such pair &mdash; how far apart are they, or do they already overlap &mdash; using two very different mechanisms for the same job.
+			</p>
+
+			<h3>References</h3>
+			<ul>
+			<li>[GJK88] E. G. Gilbert, D. W. Johnson, S. S. Keerthi. A Fast Procedure for Computing the Distance Between Complex Objects in Three-Dimensional Space. IEEE Journal of Robotics and Automation, 1988.</li>
+			<li>[vdB01] Gino van den Bergen. Proximity Queries and Penetration Depth Computation on 3D Game Objects. Game Developers Conference, 2001.</li>
+			<li>[Eri04] Christer Ericson. Real-Time Collision Detection. Morgan Kaufmann, 2004.</li>
+			</ul>
+	</div>
+
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	// ---- small 2D vector helpers ----
+	function sub(a, b)   { return { x: a.x - b.x, y: a.y - b.y }; }
+	function add(a, b)   { return { x: a.x + b.x, y: a.y + b.y }; }
+	function scale(a, s) { return { x: a.x * s, y: a.y * s }; }
+	function dot(a, b)   { return a.x * b.x + a.y * b.y; }
+	function len(a)      { return Math.sqrt(dot(a, a)); }
+	function clamp01(x)  { return Math.max(0, Math.min(1, x)); }
+
+	// closest points between two segments (standard formulation, e.g. Ericson, Real-Time Collision Detection)
+	function closestPointsSegmentSegment(p0, p1, q0, q1)
+	{
+		const EPS = 1e-12;
+		let d1 = sub(p1, p0), d2 = sub(q1, q0), r = sub(p0, q0);
+		let a = dot(d1, d1), e = dot(d2, d2), f = dot(d2, r);
+		let s, t;
+
+		if (a <= EPS && e <= EPS) { s = 0; t = 0; }
+		else if (a <= EPS) { s = 0; t = clamp01(f / e); }
+		else
+		{
+			let c = dot(d1, r);
+			if (e <= EPS) { t = 0; s = clamp01(-c / a); }
+			else
+			{
+				let b = dot(d1, d2);
+				let denom = a * e - b * b;
+				s = denom > EPS ? clamp01((b * f - c * e) / denom) : 0;
+				t = (b * s + f) / e;
+				if (t < 0)      { t = 0; s = clamp01(-c / a); }
+				else if (t > 1) { t = 1; s = clamp01((b - c) / a); }
+			}
+		}
+		return { pA: add(p0, scale(d1, s)), pB: add(q0, scale(d2, t)) };
+	}
+
+	// ground truth used only for validation: check every pair of boundary edges directly
+	// (valid whenever the polygons are separated; not meaningful when one fully contains the other)
+	function bruteForceMinDistance(polyA, polyB)
+	{
+		let best = Infinity;
+		let nA = polyA.length, nB = polyB.length;
+		for (let i = 0; i < nA; i++)
+		{
+			let a0 = polyA[i], a1 = polyA[(i + 1) % nA];
+			for (let j = 0; j < nB; j++)
+			{
+				let b0 = polyB[j], b1 = polyB[(j + 1) % nB];
+				let { pA, pB } = closestPointsSegmentSegment(a0, a1, b0, b1);
+				best = Math.min(best, len(sub(pA, pB)));
+			}
+		}
+		return best;
+	}
+
+	// convex hull (Andrew's monotone chain); winding order does not matter for GJK
+	function convexHull(points)
+	{
+		let pts = points.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+		const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+		let lower = [];
+		for (let p of pts)
+		{
+			while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0)
+				lower.pop();
+			lower.push(p);
+		}
+		let upper = [];
+		for (let i = pts.length - 1; i >= 0; i--)
+		{
+			let p = pts[i];
+			while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0)
+				upper.pop();
+			upper.push(p);
+		}
+		lower.pop(); upper.pop();
+		return lower.concat(upper);
+	}
+
+	// generate a random convex polygon (local coordinates, centered on the origin)
+	function randomConvexPolygon(targetVertices, radius)
+	{
+		let pts = [];
+		for (let i = 0; i < targetVertices * 4; i++)
+		{
+			let angle = Math.random() * 2 * Math.PI;
+			let r = radius * (0.35 + 0.65 * Math.random());
+			pts.push({ x: r * Math.cos(angle), y: r * Math.sin(angle) });
+		}
+		return convexHull(pts);
+	}
+
+	function transformPolygon(local, center, angle)
+	{
+		let ca = Math.cos(angle), sa = Math.sin(angle);
+		return local.map(p => ({
+			x: center.x + p.x * ca - p.y * sa,
+			y: center.y + p.x * sa + p.y * ca
+		}));
+	}
+
+	function pointInConvexPolygon(poly, p)
+	{
+		let n = poly.length;
+		for (let i = 0; i < n; i++)
+		{
+			let a = poly[i], b = poly[(i + 1) % n];
+			if ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x) < 0)
+				return false;
+		}
+		return true;
+	}
+
+	// ---- GJK core: support function, simplex reduction (Voronoi regions of the simplex), main loop ----
+
+	// farthest point of a convex polygon in direction d
+	function supportPoint(poly, d)
+	{
+		let best = poly[0], bestDot = dot(poly[0], d);
+		for (let i = 1; i < poly.length; i++)
+		{
+			let dt = dot(poly[i], d);
+			if (dt > bestDot) { bestDot = dt; best = poly[i]; }
+		}
+		return best;
+	}
+
+	// support point of the Minkowski difference A - B in direction d, keeping the
+	// contributing points of A and B around so witness points can be recovered later
+	function supportMinkowski(polyA, polyB, d)
+	{
+		let a = supportPoint(polyA, d);
+		let b = supportPoint(polyB, { x: -d.x, y: -d.y });
+		return { p: sub(a, b), a, b };
+	}
+
+	function samePoint(a, b) { return Math.abs(a.x - b.x) < 1e-7 && Math.abs(a.y - b.y) < 1e-7; }
+	function containsSupportPoint(entries, p) { return entries.some(e => samePoint(e.p, p)); }
+
+	// closest point of the current simplex to the origin, reducing it to only the
+	// entries needed to describe that closest feature (Johnson's sub-algorithm, 2D case)
+	function closestOnSimplex(simplex)
+	{
+		if (simplex.length === 1)
+		{
+			let e = simplex[0];
+			return { point: e.p, reduced: [e], witnessA: e.a, witnessB: e.b };
+		}
+		if (simplex.length === 2)
+		{
+			let [E0, E1] = simplex;
+			let A = E0.p, B = E1.p;
+			let d = sub(B, A);
+			let denom = dot(d, d);
+			let rawT = denom > 1e-12 ? -dot(A, d) / denom : 0;	// origin - A = -A since the origin is (0,0)
+			if (rawT <= 0) return { point: A, reduced: [E0], witnessA: E0.a, witnessB: E0.b };
+			if (rawT >= 1) return { point: B, reduced: [E1], witnessA: E1.a, witnessB: E1.b };
+			return {
+				point: add(A, scale(d, rawT)),
+				reduced: [E0, E1],
+				witnessA: add(E0.a, scale(sub(E1.a, E0.a), rawT)),
+				witnessB: add(E0.b, scale(sub(E1.b, E0.b), rawT))
+			};
+		}
+		// triangle: test each edge; if the origin is on its outward side, recurse into that edge
+		let [E0, E1, E2] = simplex;
+		let edges = [[E0, E1, E2], [E1, E2, E0], [E2, E0, E1]];
+		for (let [Ep, Eq, Er] of edges)
+		{
+			let P = Ep.p, Q = Eq.p, R = Er.p;
+			let e = sub(Q, P);
+			let n = { x: e.y, y: -e.x };
+			if (dot(n, sub(R, P)) > 0)
+				n = { x: -n.x, y: -n.y };	// make n point away from the third vertex
+			if (dot(n, P) < 0)				// origin - P = -P; outside iff dot(n,-P) > 0
+				return closestOnSimplex([Ep, Eq]);
+		}
+		return { point: { x: 0, y: 0 }, reduced: simplex, containsOrigin: true };
+	}
+
+	// run GJK to completion from an arbitrary starting direction (used in continuous mode)
+	function gjkDistance(polyA, polyB, maxIter)
+	{
+		let first = supportMinkowski(polyA, polyB, { x: 1, y: 0 });
+		let simplex = [first];
+		let history = [first];
+		let iterations = 0;
+
+		for (; iterations < maxIter; iterations++)
+		{
+			let closest = closestOnSimplex(simplex);
+			if (closest.containsOrigin)
+				return { intersecting: true, distance: 0, simplex, history, iterations };
+
+			let q = closest.point;
+			let qLen = len(q);
+			if (qLen < 1e-9)
+				return { intersecting: true, distance: 0, simplex, history, iterations };
+
+			let newDir = scale(q, -1 / qLen);
+			let s = supportMinkowski(polyA, polyB, newDir);
+
+			if (containsSupportPoint(closest.reduced, s.p) || dot(s.p, newDir) - dot(q, newDir) < 1e-6)
+			{
+				return {
+					intersecting: false, distance: qLen, closestPoint: q,
+					witnessA: closest.witnessA, witnessB: closest.witnessB,
+					simplex: closest.reduced, history, iterations
+				};
+			}
+			history.push(s);
+			simplex = [...closest.reduced, s];
+		}
+		let closest = closestOnSimplex(simplex);
+		return {
+			intersecting: !!closest.containsOrigin, distance: len(closest.point), closestPoint: closest.point,
+			witnessA: closest.witnessA, witnessB: closest.witnessB, simplex, history, iterations
+		};
+	}
+
+	// ---- manual, single-step version of the same algorithm (used in step-by-step mode) ----
+
+	function gjkInitState(polyA, polyB)
+	{
+		let first = supportMinkowski(polyA, polyB, { x: 1, y: 0 });
+		return { simplex: [first], history: [first], done: false, result: null };
+	}
+
+	function gjkStep(polyA, polyB, state)
+	{
+		if (state.done)
+			return { description: "Already finished — use “Restart search” to try again." };
+
+		let closest = closestOnSimplex(state.simplex);
+		if (closest.containsOrigin || len(closest.point) < 1e-9)
+		{
+			state.simplex = closest.reduced || state.simplex;
+			state.done = true;
+			state.result = { intersecting: true, distance: 0 };
+			return { description: "The simplex encloses the origin — the shapes overlap." };
+		}
+
+		let q = closest.point;
+		let qLen = len(q);
+		let newDir = scale(q, -1 / qLen);
+		let s = supportMinkowski(polyA, polyB, newDir);
+		let progress = dot(s.p, newDir) - dot(q, newDir);
+
+		if (containsSupportPoint(closest.reduced, s.p) || progress < 1e-6)
+		{
+			state.simplex = closest.reduced;
+			state.done = true;
+			state.result = {
+				intersecting: false, distance: qLen, closestPoint: q,
+				witnessA: closest.witnessA, witnessB: closest.witnessB
+			};
+			return { description: `No further support point improves on Q (progress ${progress.toFixed(3)}) — converged, distance = ${qLen.toFixed(1)}.` };
+		}
+
+		state.history.push(s);
+		state.simplex = [...closest.reduced, s];
+		return { description: `Queried a support point towards the origin — simplex now has ${state.simplex.length} point(s).` };
+	}
+
+	class Simulation
+	{
+		constructor(numVertsA, numVertsB, speed, panelWidth, panelHeight)
+		{
+			this.panelWidth = panelWidth;
+			this.panelHeight = panelHeight;
+			this.mode = 'continuous';
+
+			this.localA = randomConvexPolygon(numVertsA, 70);
+			this.localB = randomConvexPolygon(numVertsB, 70);
+			this.radiusA = Math.max(...this.localA.map(p => len(p)));
+			this.radiusB = Math.max(...this.localB.map(p => len(p)));
+
+			this.centerA = { x: panelWidth * 0.32, y: panelHeight * 0.35 };
+			this.centerB = { x: panelWidth * 0.68, y: panelHeight * 0.65 };
+			this.angleA = 0;
+			this.angleB = 0;
+
+			let aA = Math.random() * 2 * Math.PI, aB = Math.random() * 2 * Math.PI;
+			this.velA = { x: Math.cos(aA) * speed, y: Math.sin(aA) * speed };
+			this.velB = { x: Math.cos(aB) * speed, y: Math.sin(aB) * speed };
+			this.angVelA = (Math.random() - 0.5) * 0.6;
+			this.angVelB = (Math.random() - 0.5) * 0.6;
+
+			this.updateGeometry();
+			this.gjkState = gjkInitState(this.polyA, this.polyB);
+			this.evaluate();
+		}
+
+		updateGeometry()
+		{
+			this.polyA = transformPolygon(this.localA, this.centerA, this.angleA);
+			this.polyB = transformPolygon(this.localB, this.centerB, this.angleB);
+		}
+
+		bounceWall(center, vel, radius)
+		{
+			if (center.x - radius < 0)                  { center.x = radius;                     vel.x = Math.abs(vel.x); }
+			if (center.x + radius > this.panelWidth)    { center.x = this.panelWidth - radius;   vel.x = -Math.abs(vel.x); }
+			if (center.y - radius < 0)                  { center.y = radius;                     vel.y = Math.abs(vel.y); }
+			if (center.y + radius > this.panelHeight)   { center.y = this.panelHeight - radius;  vel.y = -Math.abs(vel.y); }
+		}
+
+		integrate(dt)
+		{
+			this.centerA.x += this.velA.x * dt; this.centerA.y += this.velA.y * dt; this.angleA += this.angVelA * dt;
+			this.centerB.x += this.velB.x * dt; this.centerB.y += this.velB.y * dt; this.angleB += this.angVelB * dt;
+			this.bounceWall(this.centerA, this.velA, this.radiusA);
+			this.bounceWall(this.centerB, this.velB, this.radiusB);
+			this.updateGeometry();
+		}
+
+		// continuous mode: run GJK to completion from scratch every step
+		evaluate()
+		{
+			this.result = gjkDistance(this.polyA, this.polyB, 32);
+			this.bruteForceDistance = bruteForceMinDistance(this.polyA, this.polyB);
+		}
+
+		// step mode: (re)start the manual walk on the current geometry
+		restartSearch()
+		{
+			this.gjkState = gjkInitState(this.polyA, this.polyB);
+			this.bruteForceDistance = bruteForceMinDistance(this.polyA, this.polyB);
+		}
+
+		manualStep()
+		{
+			let r = gjkStep(this.polyA, this.polyB, this.gjkState);
+			this.bruteForceDistance = bruteForceMinDistance(this.polyA, this.polyB);
+			return r;
+		}
+	}
+
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+
+			this.leftWidth = this.canvas.width / 2;	// world-space panel (also used as the arena width)
+			this.rightX = this.leftWidth;				// Minkowski-difference panel starts here
+			this.rightWidth = this.canvas.width / 2;
+			this.mkScale = 0.4;							// shrink factor for drawing Minkowski-space points
+
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.pause = false;
+			this.dragTarget = null;
+			this.stepLog = [];
+
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);
+			this.canvas.addEventListener("touchstart", this.touchStart.bind(this), { passive: false });
+			this.canvas.addEventListener("touchmove", this.touchMove.bind(this), { passive: false });
+			this.canvas.addEventListener("touchend", this.touchEnd.bind(this), { passive: false });
+		}
+
+		restart()
+		{
+			window.cancelAnimationFrame(this.requestID);
+			let numVertsA = parseInt(document.getElementById('numVerticesAInput').value);
+			let numVertsB = parseInt(document.getElementById('numVerticesBInput').value);
+			let speed = parseFloat(document.getElementById('speedInput').value);
+
+			this.timeSum = 0.0;
+			this.counter = 0;
+			this.dragTarget = null;
+			this.stepLog = [];
+			document.getElementById("stepLog").innerHTML = "";
+
+			delete this.sim;
+			this.sim = new Simulation(numVertsA, numVertsB, speed, this.leftWidth, this.canvas.height);
+			this.sim.mode = document.getElementById('modeInput').value;
+			this.pause = (this.sim.mode === 'step');
+
+			this.refresh();
+			if (!this.pause)
+				this.mainLoop();
+		}
+
+		setMode(mode)
+		{
+			this.sim.mode = mode;
+			if (mode === 'step')
+			{
+				this.pause = true;
+				this.sim.restartSearch();
+				this.stepLog = [];
+				document.getElementById("stepLog").innerHTML = "";
+			}
+			else
+			{
+				this.pause = false;
+			}
+			this.refresh();
+			if (!this.pause)
+				this.mainLoop();
+		}
+
+		restartSearch()
+		{
+			this.sim.restartSearch();
+			this.stepLog = [];
+			document.getElementById("stepLog").innerHTML = "";
+			this.refresh();
+		}
+
+		step()
+		{
+			let r = this.sim.manualStep();
+			this.logStep(r.description);
+			this.refresh();
+		}
+
+		convergeNow()
+		{
+			let guard = 0;
+			while (!this.sim.gjkState.done && guard < 64)
+			{
+				let r = this.sim.manualStep();
+				this.logStep(r.description);
+				guard++;
+			}
+			this.refresh();
+		}
+
+		logStep(text)
+		{
+			this.stepLog.unshift(text);
+			if (this.stepLog.length > 6)
+				this.stepLog.length = 6;
+			document.getElementById("stepLog").innerHTML = this.stepLog.map(s => `<div>${s}</div>`).join('');
+		}
+
+		// unify continuous/step-mode results into one shape the drawing/stat code can use
+		getDisplayState()
+		{
+			if (this.sim.mode === 'continuous')
+				return this.sim.result;
+			let st = this.sim.gjkState;
+			if (st.done)
+				return { ...st.result, simplex: st.simplex, history: st.history, iterations: st.history.length - 1 };
+			let closest = closestOnSimplex(st.simplex);
+			return {
+				intersecting: !!closest.containsOrigin, distance: len(closest.point), closestPoint: closest.point,
+				witnessA: closest.witnessA, witnessB: closest.witnessB,
+				simplex: st.simplex, history: st.history, iterations: st.history.length - 1
+			};
+		}
+
+		refresh()
+		{
+			if (this.sim.mode === 'continuous')
+				this.sim.evaluate();
+			this.displayState = this.getDisplayState();
+			this.updateStats();
+			this.draw();
+		}
+
+		updateStats()
+		{
+			let ds = this.displayState;
+			document.getElementById("distanceGJK").innerHTML = ds.distance.toFixed(2);
+			document.getElementById("status").innerHTML = ds.intersecting ? "Overlapping" : "Separated";
+			document.getElementById("numQueries").innerHTML = ds.history.length;
+			document.getElementById("simplexKind").innerHTML = ["point", "segment", "triangle"][ds.simplex.length - 1] || "-";
+			document.getElementById("numVertsA").innerHTML = this.sim.polyA.length;
+			document.getElementById("numVertsB").innerHTML = this.sim.polyB.length;
+
+			let bfEl = document.getElementById("distanceBF");
+			if (ds.intersecting)
+			{
+				bfEl.innerHTML = "n/a (overlapping)";
+				document.getElementById("distanceGJK").style.color = "";
+			}
+			else
+			{
+				bfEl.innerHTML = this.sim.bruteForceDistance.toFixed(2);
+				let mismatch = (this.sim.mode === 'continuous') && Math.abs(ds.distance - this.sim.bruteForceDistance) > 1.0;
+				document.getElementById("distanceGJK").style.color = mismatch ? "#e61e1e" : "";
+			}
+		}
+
+		drawPolygon(poly, fillStyle, strokeStyle)
+		{
+			let c = this.c;
+			c.beginPath();
+			c.moveTo(poly[0].x, poly[0].y);
+			for (let i = 1; i < poly.length; i++)
+				c.lineTo(poly[i].x, poly[i].y);
+			c.closePath();
+			c.fillStyle = fillStyle;
+			c.fill();
+			c.strokeStyle = strokeStyle;
+			c.lineWidth = 2;
+			c.stroke();
+		}
+
+		drawWorldPanel()
+		{
+			let c = this.c, ds = this.displayState;
+			c.save();
+			c.beginPath();
+			c.rect(0, 0, this.leftWidth, this.canvas.height);
+			c.clip();
+
+			c.fillStyle = "#ffffff";
+			c.fillRect(0, 0, this.leftWidth, this.canvas.height);
+
+			this.drawPolygon(this.sim.polyA, "rgba(70,115,229,0.18)", "#4673e5");
+			this.drawPolygon(this.sim.polyB, "rgba(16,185,129,0.18)", "#10b981");
+
+			c.fillStyle = "#4b5563";
+			c.font = "20px Inter, sans-serif";
+			c.fillText("World space", 10, 20);
+
+			if (ds.intersecting)
+			{
+				c.fillStyle = "#e61e1e";
+				c.font = "bold 16px Inter, sans-serif";
+				c.fillText("Overlapping!", 10, 44);
+			}
+			else if (ds.witnessA && ds.witnessB)
+			{
+				c.save();
+				c.strokeStyle = "#e61e1e";
+				c.setLineDash([6, 4]);
+				c.lineWidth = 2;
+				c.beginPath();
+				c.moveTo(ds.witnessA.x, ds.witnessA.y);
+				c.lineTo(ds.witnessB.x, ds.witnessB.y);
+				c.stroke();
+				c.restore();
+
+				c.fillStyle = "#e61e1e";
+				for (let p of [ds.witnessA, ds.witnessB])
+				{
+					c.beginPath();
+					c.arc(p.x, p.y, 5, 0, Math.PI * 2);
+					c.fill();
+				}
+
+				let mid = { x: (ds.witnessA.x + ds.witnessB.x) / 2, y: (ds.witnessA.y + ds.witnessB.y) / 2 };
+				c.fillStyle = "#4b5563";
+				c.font = "13px Inter, sans-serif";
+				c.fillText(`d = ${ds.distance.toFixed(1)}`, mid.x + 8, mid.y - 8);
+			}
+			c.restore();
+			c.strokeStyle = "#999999";
+			c.strokeRect(0, 0, this.leftWidth, this.canvas.height);
+		}
+
+		drawMinkowskiPanel()
+		{
+			let c = this.c, ds = this.displayState;
+			let ox = this.rightX, w = this.rightWidth, h = this.canvas.height;
+			let originR = { x: ox + w / 2, y: h / 2 };
+			let s = this.mkScale;
+			let toPanel = p => ({ x: originR.x + p.x * s, y: originR.y - p.y * s });
+
+			c.save();
+			c.beginPath();
+			c.rect(ox, 0, w, h);
+			c.clip();
+
+			c.fillStyle = "#f5f7ff";
+			c.fillRect(ox, 0, w, h);
+
+			// axes through the panel's local origin
+			c.strokeStyle = "#cbd5e1";
+			c.lineWidth = 1;
+			c.beginPath(); c.moveTo(ox, originR.y); c.lineTo(ox + w, originR.y); c.stroke();
+			c.beginPath(); c.moveTo(originR.x, 0); c.lineTo(originR.x, h); c.stroke();
+
+			c.fillStyle = "#4b5563";
+			c.font = "20px Inter, sans-serif";
+			c.fillText("Minkowski difference  A ⊖ B", ox + 10, 20);
+
+			// trail of every support point queried so far
+			c.fillStyle = "rgba(107,114,128,0.5)";
+			for (let e of ds.history)
+			{
+				let p = toPanel(e.p);
+				c.beginPath();
+				c.arc(p.x, p.y, 3, 0, Math.PI * 2);
+				c.fill();
+			}
+
+			// current simplex
+			if (ds.simplex.length >= 2)
+			{
+				c.strokeStyle = "#8b5cf6";
+				c.lineWidth = 2;
+				c.beginPath();
+				let p0 = toPanel(ds.simplex[0].p);
+				c.moveTo(p0.x, p0.y);
+				for (let i = 1; i < ds.simplex.length; i++)
+				{
+					let p = toPanel(ds.simplex[i].p);
+					c.lineTo(p.x, p.y);
+				}
+				if (ds.simplex.length === 3)
+					c.closePath();
+				c.stroke();
+			}
+			c.fillStyle = "#8b5cf6";
+			for (let e of ds.simplex)
+			{
+				let p = toPanel(e.p);
+				c.beginPath();
+				c.arc(p.x, p.y, 6, 0, Math.PI * 2);
+				c.fill();
+			}
+
+			// origin marker
+			c.strokeStyle = "#111827";
+			c.lineWidth = 2;
+			c.beginPath(); c.moveTo(originR.x - 7, originR.y); c.lineTo(originR.x + 7, originR.y); c.stroke();
+			c.beginPath(); c.moveTo(originR.x, originR.y - 7); c.lineTo(originR.x, originR.y + 7); c.stroke();
+
+			// closest point to the origin, if separated
+			if (!ds.intersecting && ds.closestPoint)
+			{
+				let q = toPanel(ds.closestPoint);
+				c.save();
+				c.strokeStyle = "#e61e1e";
+				c.setLineDash([5, 4]);
+				c.lineWidth = 2;
+				c.beginPath();
+				c.moveTo(originR.x, originR.y);
+				c.lineTo(q.x, q.y);
+				c.stroke();
+				c.restore();
+
+				c.fillStyle = "#e61e1e";
+				c.beginPath();
+				c.arc(q.x, q.y, 5, 0, Math.PI * 2);
+				c.fill();
+			}
+			c.restore();
+			c.strokeStyle = "#999999";
+			c.strokeRect(ox, 0, w, h);
+		}
+
+		draw()
+		{
+			let c = this.c;
+			c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			this.drawWorldPanel();
+			this.drawMinkowskiPanel();
+		}
+
+		mainLoop()
+		{
+			let t0 = performance.now();
+
+			if (!this.pause)
+				this.sim.integrate(1 / 60);
+			this.refresh();
+
+			let t1 = performance.now();
+			this.timeSum += t1 - t0;
+			this.counter += 1;
+			if (this.counter % 30 == 0)
+			{
+				this.timeSum /= this.counter;
+				document.getElementById("timePerStep").innerHTML = this.timeSum.toFixed(3);
+				this.timeSum = 0.0;
+				this.counter = 0;
+			}
+
+			if (!this.pause)
+				this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));
+		}
+
+		doPause()
+		{
+			this.pause = !this.pause;
+			if (!this.pause)
+				this.mainLoop();
+		}
+
+		pickPolygon(pos)
+		{
+			if (pointInConvexPolygon(this.sim.polyA, pos)) return 'A';
+			if (pointInConvexPolygon(this.sim.polyB, pos)) return 'B';
+			return null;
+		}
+
+		mouseDown(event)
+		{
+			if (event.which == 1)
+			{
+				let pos = this.getMousePos(this.canvas, event);
+				this.dragTarget = this.pickPolygon(pos);
+				if (this.dragTarget === 'A') { this.sim.velA.x = 0; this.sim.velA.y = 0; }
+				if (this.dragTarget === 'B') { this.sim.velB.x = 0; this.sim.velB.y = 0; }
+			}
+		}
+
+		getMousePos(canvas, event)
+		{
+			const rect = canvas.getBoundingClientRect();
+			const scaleX = canvas.width / rect.width;
+			const scaleY = canvas.height / rect.height;
+			return {
+				x: (event.clientX - rect.left) * scaleX,
+				y: (event.clientY - rect.top) * scaleY
+			};
+		}
+
+		mouseMove(event)
+		{
+			if (this.dragTarget)
+			{
+				let pos = this.getMousePos(this.canvas, event);
+				let center = this.dragTarget === 'A' ? this.sim.centerA : this.sim.centerB;
+				let radius = this.dragTarget === 'A' ? this.sim.radiusA : this.sim.radiusB;
+				center.x = Math.min(Math.max(pos.x, radius), this.leftWidth - radius);
+				center.y = Math.min(Math.max(pos.y, radius), this.canvas.height - radius);
+				this.sim.updateGeometry();
+				if (this.sim.mode === 'step')
+					this.sim.restartSearch();
+				this.refresh();
+			}
+		}
+
+		mouseUp(event)
+		{
+			this.dragTarget = null;
+		}
+
+		getTouchClient(event)
+		{
+			const t = event.touches.length > 0 ? event.touches[0] : event.changedTouches[0];
+			return { clientX: t.clientX, clientY: t.clientY };
+		}
+
+		touchStart(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseDown({ which: 1, ...this.getTouchClient(event) });
+		}
+
+		touchMove(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseMove(this.getTouchClient(event));
+		}
+
+		touchEnd(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 0)
+				this.mouseUp(event);
+		}
+	}
+
+	gui = new GUI();
+	gui.restart();
+</script>
+
+</body>
+</html>
