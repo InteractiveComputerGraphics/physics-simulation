@@ -93,7 +93,8 @@
 	<!-- Theory section -->
 	<div class="card theory">
 			<h2>PBD algorithm:</h2>
-				This example shows the position based dynamics method introduced by Müller et al. [MHHR06,BMM17].
+				Instead of computing forces and integrating accelerations, as in classical force-based simulation, <b>position-based dynamics (PBD)</b> [MHHR06,BMM17] formulates physical relationships as geometric <b>constraints</b> and enforces them by directly displacing particle positions. This example simulates a piece of cloth: a regular grid of particles connected by distance constraints and hanging under gravity from one or more fixed corners. You can grab and drag any of the free particles with the mouse.
+				<p>Every time step the following steps are performed:</p>
 				<ol>
 					<li>time integration to predict particle positions</li>
 					<li class="nostyle"><b>loop</b></li>
@@ -101,63 +102,74 @@
 					<li style="margin-left:40px">determine position correction</li>
 					<li>update velocities</li>
 				</ol>
-				In this example we use distance constraints 
+				In this example we use distance constraints
 				$$C_i(\mathbf{x}_{i_1}, \mathbf{x}_{i_2}) = \| \mathbf x_{i_1} -\mathbf x_{i_2} \|-d,$$
-				where $d$ is the rest length between particles $\mathbf{x}_{i_1}$ and  $\mathbf{x}_{i_2}$.
-			
+				where $d$ is the rest length between particles $\mathbf{x}_{i_1}$ and  $\mathbf{x}_{i_2}$; a constraint is satisfied once $C_i = 0$. Besides the horizontal and vertical structural constraints along the grid, diagonal constraints are added within each grid cell to resist shearing and keep the cloth from collapsing sideways.
+
 			<h3>1. Time integration</h3>
 				In the first step the particle positions are advected using a symplectic Euler method to obtain predicted positions $\mathbf x^*$:
 				$$\begin{align*}
 					\mathbf v^* &= \mathbf v(t) + \Delta t \mathbf a_\text{ext}(t) \\
 					\mathbf x^* &= \mathbf x(t) + \Delta t \mathbf v^*,
 				\end{align*}$$
-				where $\mathbf a_\text{ext}$ are accelerations due to external forces.
-				
+				where $\mathbf a_\text{ext}$ are accelerations due to external forces (here: gravity). Note that this prediction ignores the distance constraints entirely, so $\mathbf x^*$ will generally violate them &mdash; correcting this is exactly the job of the solver loop below.
+
 			<h3>2. Solver loop</h3>
-				Position corrections are computed and applied in a loop using a fixed number of iterations. 
-				
+				The position corrections of all constraints are computed and applied one after another in a single sweep, and this sweep is repeated for a fixed number of iterations (Gauss-Seidel-style relaxation). Because each correction immediately updates the positions seen by the next constraint in the sweep, more iterations propagate the corrections further through the cloth and bring the particles closer to satisfying <em>all</em> constraints simultaneously. Unlike a spring stiffness constant in a force-based model, here it is the <b>number of iterations</b> (relative to the time step) that determines how stretchy or stiff the cloth appears &mdash; try reducing it in the controls panel and observe the effect.
+
 			<h3>3. Compute Lagrange multipliers</h3>
-			
+
 				<p>The general form to compute the Lagrange multipliers in position-based dynamics is
 				$$\mathbf J \mathbf M^{-1} \mathbf J^T \boldsymbol \lambda = -\mathbf C(\mathbf p),$$
 				where $\mathbf J = (\partial C / \partial \mathbf x)^T$ is the Jacobian of the constraint function and $\mathbf M$ denotes the mass matrix.</p>
-				
+
 				<p>Since the distance constraint is a scalar function the Lagrange multiplier is determined as
 				$$\lambda_i = - \frac{C_i(\mathbf x)}{\sum_j \frac{1}{m_j} \| \partial C_i(\mathbf x) / \partial \mathbf x_j\|^2},$$
-				where $j$ denotes the indices of the particles which are influenced by the constraint.
+				where $j$ denotes the indices of the particles which are influenced by the constraint. Fixed particles are excluded from this sum (their inverse mass is treated as zero), which is why they do not move under the correction below.
 				</p>
-				
-				<p>To compute the Lagrange multipliers, the constraint gradients are required which are computed as: </p>				
+
+				<p>To compute the Lagrange multipliers, the constraint gradients are required which are computed as: </p>
 				<h4>Constraint gradients:</h4>
 					$$\begin{align*}
 					 \frac{\partial C_i}{\partial \mathbf x_{i_1}} &= \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|}  \\
 					 \frac{\partial C_i}{\partial \mathbf x_{i_2}} &= - \frac{\mathbf x_{i_1} -\mathbf x_{i_2}}{\| \mathbf x_{i_1} -\mathbf x_{i_2} \|}
 					\end{align*}$$
-					
+
 			<h3>4. Position correction:</h3>
 				The position correction for a particle is determined using the Lagrange multiplier:
 					$$\begin{align*}
 					\Delta \mathbf x_{i_1} &= \frac{1}{m_{i_1}} \frac{\partial C_i}{\partial \mathbf x_{i_1}} \lambda_i = -\frac{\frac{1}{m_{i_1}}}{\frac{1}{m_{i_1}} + \frac{1}{m_{i_2}}}(\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|-d)\frac{\mathbf{x}_{i_1}- \mathbf{x}_{i_2}}{\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|} \\
-					\Delta \mathbf x_{i_2} &= \frac{1}{m_{i_2}} \frac{\partial C_i}{\partial \mathbf x_{i_2}} \lambda_i = +\frac{\frac{1}{m_{i_1}}}{\frac{1}{m_{i_1}} + \frac{1}{m_{i_2}}}(\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|-d)\frac{\mathbf{x}_{i_1}- \mathbf{x}_{i_2}}{\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|} 
+					\Delta \mathbf x_{i_2} &= \frac{1}{m_{i_2}} \frac{\partial C_i}{\partial \mathbf x_{i_2}} \lambda_i = +\frac{\frac{1}{m_{i_1}}}{\frac{1}{m_{i_1}} + \frac{1}{m_{i_2}}}(\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|-d)\frac{\mathbf{x}_{i_1}- \mathbf{x}_{i_2}}{\|\mathbf{x}_{i_1} - \mathbf{x}_{i_2}\|}
 					\end{align*}$$
 				and the correction is applied to update $\mathbf x^*$ as
 					$$\mathbf x^* := \mathbf x^* + \Delta \mathbf x.$$
-					
+				Note that heavier particles (larger mass $m$) receive a proportionally smaller correction &mdash; this is what makes the constraint respect the mass ratio between the two particles instead of always splitting the correction evenly.
+
 			<h3>5. Velocity update:</h3>
 				The final positions and velocities are computed as:
 				$$\begin{align*}
 					\mathbf x_i(t+\Delta t) &= \mathbf x_i^* \\
 					\mathbf v_i(t+\Delta t) &= \frac{1}{\Delta t} (\mathbf x_i(t+\Delta t) - \mathbf x_i(t))
 				\end{align*}
-				$$	
-			
+				$$
+				Rather than integrating forces, the velocity is simply reconstructed from how far the position moved during the step. This automatically accounts for all constraint corrections as if they had been caused by impulses, and it introduces a mild, built-in numerical damping (energy is removed whenever a correction shortens a particle's displacement) that contributes to the method's robustness.
+
+			<h3>Properties</h3>
+				<ul>
+					<li><b>Stable:</b> since a solver iteration always projects positions towards the constraint manifold rather than integrating a (possibly stiff) restoring force, PBD cannot blow up numerically even for large time steps or arbitrarily "stiff" constraints &mdash; unlike an explicit force-based spring model, which requires a very small time step to remain stable for stiff springs.</li>
+					<li><b>No physical stiffness parameter:</b> constraints are treated as hard constraints; the perceived stiffness of the cloth is governed by the number of solver iterations relative to the time step, not by a spring constant. Many iterations converge towards an inextensible cloth, while few iterations yield a visibly softer, more elastic look.</li>
+					<li><b>Simple and fast:</b> each iteration only evaluates constraint functions and their gradients directly on the positions; no force assembly or (potentially large, implicit) linear system needs to be built and solved. This simplicity is a key reason why PBD (and its successor, XPBD) is widely used for cloth, hair, and soft bodies in real-time applications such as games.</li>
+					<li><b>Approximate and iteration-dependent:</b> with only a fixed, small number of Gauss-Seidel sweeps, constraints are in general not fully satisfied. Corrections propagate only one constraint "hop" per iteration, so particles far away from a fixed point need more iterations before they feel its influence &mdash; increase the grid size in the controls and watch how much longer the cloth needs to settle.</li>
+				</ul>
+				The panel on the right also reports the measured time per simulation step, which grows with the number of particles, constraints and iterations &mdash; try increasing the grid resolution or the iteration count to see this trade-off between accuracy and performance directly.
+
 			<h3>References</h3>
 			<ul>
 			<li>[MHHR06] Matthias Müller, Bruno Heidelberger, Marcus Hennix, John Ratcliff. Position Based Dynamics. In Proceedings of Virtual Realitiy, Interactions, and Physical Simulation, 2006. Eurographics Association.</li>
 			<li>[BMM17] Jan Bender, Matthias Müller, Miles Macklin. A Survey on Position Based Dynamics, 2017. Eurographics Tutorials, 2017</li>
 			</ul>
-			
-	</div>	
+
+	</div>
 	
 </main>
 
