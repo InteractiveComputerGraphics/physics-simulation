@@ -1,0 +1,701 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Quaternion Rotation</title>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>Quaternions for Rotation</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="70%">
+		<col width="30%">
+		<tr>
+			<td>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="960" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+					<p class="canvas-hint">Drag inside the circle (top-left) to rotate the object with your mouse — an arcball, exactly how quaternions are used in practice. The amber line is the rotation axis (arrow = right-hand-rule direction); the purple arc sweeps the angle θ from the faded rest pose to the current orientation.</p>
+				</div>
+			</td>
+			<td>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>q = (w, x, y, z)</label>
+						<span class="stat-value"><span id="qVals">1, 0, 0, 0</span></span>
+
+						<label>&Vert;q&Vert; (should be 1)</label>
+						<span class="stat-value"><span id="qNorm">1.000</span></span>
+
+						<label>Axis</label>
+						<span class="stat-value"><span id="qAxis">-</span></span>
+
+						<label>Angle</label>
+						<span class="stat-value"><span id="qAngle">0.0</span>&deg;</span>
+
+						<label for="showAxisAngleInput">Show axis &amp; angle</label>
+						<input onchange="gui.showAxisAngle = this.checked" id="showAxisAngleInput" type="checkbox" checked>
+
+						<label>Interpolation t</label>
+						<span class="stat-value"><span id="tVal">0.00</span></span>
+
+						<label>Angular speed (SLERP)</label>
+						<span class="stat-value"><span id="slerpSpeed">0.0</span> &deg;/s</span>
+
+						<label>Angular speed (naive LERP)</label>
+						<span class="stat-value"><span id="nlerpSpeed">0.0</span> &deg;/s</span>
+
+						<div class="full-width">
+							<button onclick="gui.resetOrientation()" id="reset">&#9654; Reset orientation</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.negateQ()" id="negate" class="btn-secondary">Negate q (&minus;q)</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.setKeyframe('A')" id="setA" class="btn-secondary">Set keyframe A</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.setKeyframe('B')" id="setB" class="btn-secondary">Set keyframe B</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.togglePlay()" id="play" class="btn-secondary">&#9654; Play interpolation A&rarr;B</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.nonCommDemo('xy')" id="orderXY" class="btn-secondary">Apply R<sub>x</sub>(90&deg;) then R<sub>y</sub>(90&deg;)</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.nonCommDemo('yx')" id="orderYX" class="btn-secondary">Apply R<sub>y</sub>(90&deg;) then R<sub>x</sub>(90&deg;)</button>
+						</div>
+					</div>
+				</div>
+			</td>
+		</tr>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
+			<h2>Representing rotations with quaternions</h2>
+			<p>
+			As noted in the <a href="rigid_body_collision.html">Rigid Body Collision</a> example, a single angle $\alpha$ is enough to describe a 2D rotation, but 3D rotations need more: a $3\times 3$ rotation matrix (9 numbers, 6 of them redundant), Euler angles (only 3 numbers, but they can hit a <em>gimbal lock</em> singularity and their composition order is confusing), or a <b>quaternion</b> &mdash; just 4 numbers, no singularities, and, as this example shows, unusually simple to compose and interpolate.
+			</p>
+
+			<h3>Definition</h3>
+			<p>
+			A quaternion is $q = w + x\mathbf i + y\mathbf j + z\mathbf k$, with $\mathbf i^2=\mathbf j^2=\mathbf k^2=\mathbf{ijk}=-1$. A rotation by angle $\theta$ around a <em>unit</em> axis $\hat{\mathbf n}$ is encoded as
+			$$q = \left(\cos\frac{\theta}{2},\ \sin\frac{\theta}{2}\,\hat{\mathbf n}\right), \qquad \Vert q \Vert = 1.$$
+			Only <em>unit</em> quaternions represent rotations, which is exactly why $\Vert q\Vert$ is tracked live in the panel &mdash; it should stay at $1$ at all times (up to floating-point round-off) while you drag the object.
+			</p>
+
+			<h3>Seeing $\hat{\mathbf n}$ and $\theta$ directly</h3>
+			<p>
+			The "Axis" and "Angle" statistics are exactly $\hat{\mathbf n}$ and $\theta$ recovered from the current $q$ (inverting the definition above: $\theta = 2\arccos w$, $\hat{\mathbf n} = (x,y,z)/\sin(\theta/2)$), and the "Show axis &amp; angle" overlay draws them as actual geometry rather than just numbers:
+			</p>
+			<ul>
+				<li>The <b>amber line</b> through the middle of the object is the rotation axis $\hat{\mathbf n}$ itself; the arrowhead marks its positive direction, so curling the fingers of your right hand around the arrow shows which way $\theta$ is measured (the right-hand rule).</li>
+				<li>The <b>faded, dashed copy</b> of the object is its rest pose ($q=\text{identity}$) &mdash; a fixed reference so the current (solid) orientation can be compared against where it started.</li>
+				<li>The <b>purple arc</b> is traced by literally rotating one reference direction, perpendicular to $\hat{\mathbf n}$, by every angle from $0$ up to $\theta$ around $\hat{\mathbf n}$ &mdash; a protractor drawn directly from the same rotation formula the object itself is transformed by, so the labeled angle is not just asserted but visibly the angle being swept.</li>
+			</ul>
+			<p>
+			One subtlety this view also resolves: since $q$ and $-q$ are the same rotation (see below), a raw $\theta=2\arccos w$ could come out anywhere up to $360°$ depending on an arbitrary sign. The angle shown here is always canonicalized to the shorter one, in $[0°,180°]$, by first flipping to whichever of $q,-q$ has $w\ge 0$ &mdash; so the arc you see is always the minimal sweep, never "the long way around".
+			</p>
+
+			<h3>Rotating a vector</h3>
+			<p>
+			Treating a vector $\mathbf v$ as a "pure" quaternion $(0,\mathbf v)$, a unit quaternion $q$ rotates it via the sandwich product
+			$$(0,\mathbf v') = q\,(0,\mathbf v)\,q^{-1}, \qquad q^{-1}=q^{*}=(w,-x,-y,-z) \text{ for a unit } q,$$
+			using the Hamilton product for quaternion multiplication. This is exactly how every corner of the wireframe object is transformed every frame in this example, and also how the mouse drag itself is turned into a rotation: dragging maps two points on the surface of the drawn circle (an <em>arcball</em>, a virtual trackball) to two 3D points on a unit hemisphere, and the quaternion that rotates one onto the other is applied on top of whatever orientation the object already had.
+			</p>
+
+			<h3>Two quaternions for every rotation</h3>
+			<p>
+			Because $\theta$ and $\theta+2\pi$ (equivalently, negating both $\cos(\theta/2)$ and the axis term) describe the same physical rotation, $q$ and $-q$ always represent an <em>identical</em> orientation &mdash; this is called the double cover of $SO(3)$ by unit quaternions. Press "Negate q" to see this directly: every component of $q$ flips sign, yet the object does not move at all.
+			</p>
+
+			<h3>Composing rotations</h3>
+			<p>
+			Applying rotation $q_1$ and then rotation $q_2$ corresponds to the single quaternion $q_2 q_1$ (Hamilton product, $q_1$ on the right since it acts on the vector first) &mdash; and just like matrix multiplication, this product is generally <b>not commutative</b>. "Apply $R_x(90°)$ then $R_y(90°)$" computes $R_y R_x$, while "Apply $R_y(90°)$ then $R_x(90°)$" computes $R_x R_y$; press both buttons in turn and compare the two resulting orientations &mdash; they are different, even though the same two rotations were used both times.
+			</p>
+
+			<h3>Interpolating rotations: SLERP vs. naive LERP</h3>
+			<p>
+			Drag the object into two different orientations, pressing "Set keyframe A" and "Set keyframe B" to remember them, then "Play interpolation" to animate between them two different ways at once:
+			</p>
+			<ul>
+				<li><b>SLERP</b> (spherical linear interpolation) walks along the shortest great-circle arc between $q_A$ and $q_B$ on the 4D unit sphere at constant angular speed:
+				$$\text{slerp}(q_A,q_B,t) = \frac{\sin((1-t)\Omega)}{\sin\Omega}\,q_A + \frac{\sin(t\Omega)}{\sin\Omega}\,q_B, \qquad \cos\Omega = q_A\cdot q_B.$$</li>
+				<li><b>Naive LERP</b> instead linearly interpolates the four components and renormalizes the result, $\text{nlerp}(q_A,q_B,t)=\frac{(1-t)q_A+t\,q_B}{\Vert (1-t)q_A+t\,q_B\Vert}$: cheaper, but the path it traces on the unit sphere is a straight chord pulled back onto the sphere, which moves <em>faster</em> in the middle of the interpolation than at the ends.</li>
+			</ul>
+			<p>
+			The "Angular speed" statistics measure exactly this, frame to frame, for both mini-views at the bottom of the canvas: SLERP's stays flat throughout the animation, while naive LERP's rises and falls &mdash; more noticeably the farther apart $q_A$ and $q_B$ are.
+			</p>
+
+			<h3>From quaternion to matrix</h3>
+			<p>
+			Whenever a quaternion needs to be handed to code that expects a rotation matrix (a renderer, say), it converts directly, with no trigonometry required:
+			$$R(q) = \begin{pmatrix}
+			1-2(y^2+z^2) & 2(xy-zw) & 2(xz+yw) \\
+			2(xy+zw) & 1-2(x^2+z^2) & 2(yz-xw) \\
+			2(xz-yw) & 2(yz+xw) & 1-2(x^2+y^2)
+			\end{pmatrix}.$$
+			</p>
+
+			<h3>References</h3>
+			<ul>
+			<li>[Sho85] Ken Shoemake. Animating Rotation with Quaternion Curves. In Proceedings of SIGGRAPH, 1985. (introduces SLERP)</li>
+			<li>[Sho92] Ken Shoemake. ARCBALL: A User Interface for Specifying Three-Dimensional Orientation Using a Mouse. In Proceedings of Graphics Interface, 1992.</li>
+			</ul>
+	</div>
+
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	// ---- quaternion algebra ----
+	function quatMultiply(a, b)
+	{
+		return {
+			w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+			x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+			y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+			z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w
+		};
+	}
+	function quatNorm(q) { return Math.sqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z); }
+	function quatNormalize(q)
+	{
+		let n = quatNorm(q);
+		return n > 1e-9 ? { w: q.w / n, x: q.x / n, y: q.y / n, z: q.z / n } : { w: 1, x: 0, y: 0, z: 0 };
+	}
+	function quatFromAxisAngle(axis, angle)
+	{
+		let s = Math.sin(angle / 2);
+		return { w: Math.cos(angle / 2), x: axis.x * s, y: axis.y * s, z: axis.z * s };
+	}
+	function quatToAxisAngle(q)
+	{
+		let n = quatNormalize(q);
+		// canonicalize to the representative with w >= 0: since q and -q are the same rotation,
+		// this keeps the reported angle in the conventional [0°,180°] range instead of sometimes
+		// showing "the long way around" (up to 360°) for an arbitrary sign of q
+		if (n.w < 0) n = { w: -n.w, x: -n.x, y: -n.y, z: -n.z };
+		let w = Math.min(1, Math.max(-1, n.w));
+		let angle = 2 * Math.acos(w);
+		let s = Math.sqrt(Math.max(0, 1 - w * w));
+		let axis = s > 1e-6 ? { x: n.x / s, y: n.y / s, z: n.z / s } : { x: 1, y: 0, z: 0 };
+		return { axis, angle };
+	}
+	// a unit vector perpendicular to a given unit vector n (used as the "0°" reference for the angle arc)
+	function perpendicularVector(n)
+	{
+		let ref = Math.abs(n.x) < 0.9 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+		let v = cross3(n, ref);
+		let len = norm3(v);
+		return len > 1e-6 ? { x: v.x / len, y: v.y / len, z: v.z / len } : { x: 0, y: 0, z: 1 };
+	}
+	// rotate a vector that is already perpendicular to the unit axis by angle, around that axis
+	// (Rodrigues' formula simplifies to this when axis·v0 = 0) -- used to trace out the angle arc
+	function rotatePerpVector(v0, axis, angle)
+	{
+		let kv = cross3(axis, v0);
+		let ca = Math.cos(angle), sa = Math.sin(angle);
+		return { x: v0.x * ca + kv.x * sa, y: v0.y * ca + kv.y * sa, z: v0.z * ca + kv.z * sa };
+	}
+	function quatAngleBetween(a, b)
+	{
+		let d = Math.min(1, Math.max(-1, Math.abs(a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z)));
+		return 2 * Math.acos(d);	// unsigned angular distance between the two orientations
+	}
+	// rotate a 3D vector by a unit quaternion (optimized sandwich product, no explicit q^{-1} needed)
+	function rotateVec(q, v)
+	{
+		let u = { x: q.x, y: q.y, z: q.z };
+		let uv = cross3(u, v);
+		let uuv = cross3(u, uv);
+		return { x: v.x + 2 * (q.w * uv.x + uuv.x), y: v.y + 2 * (q.w * uv.y + uuv.y), z: v.z + 2 * (q.w * uv.z + uuv.z) };
+	}
+	function cross3(a, b) { return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }; }
+	function dot3(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+	function norm3(v) { return Math.sqrt(dot3(v, v)); }
+
+	function quatToMatrix(q)
+	{
+		let n = quatNormalize(q), w = n.w, x = n.x, y = n.y, z = n.z;
+		return [
+			[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+			[2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+			[2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]
+		];
+	}
+
+	// spherical linear interpolation, with a linear-interpolation fallback for nearly identical quaternions
+	function slerp(qa, qb, t)
+	{
+		let dot = qa.w * qb.w + qa.x * qb.x + qa.y * qb.y + qa.z * qb.z;
+		let b = qb;
+		if (dot < 0) { dot = -dot; b = { w: -qb.w, x: -qb.x, y: -qb.y, z: -qb.z }; }
+		if (dot > 0.9995)
+		{
+			let r = { w: qa.w + t * (b.w - qa.w), x: qa.x + t * (b.x - qa.x), y: qa.y + t * (b.y - qa.y), z: qa.z + t * (b.z - qa.z) };
+			return quatNormalize(r);
+		}
+		let theta0 = Math.acos(dot);
+		let theta = theta0 * t;
+		let s0 = Math.cos(theta) - dot * Math.sin(theta) / Math.sin(theta0);
+		let s1 = Math.sin(theta) / Math.sin(theta0);
+		return { w: s0 * qa.w + s1 * b.w, x: s0 * qa.x + s1 * b.x, y: s0 * qa.y + s1 * b.y, z: s0 * qa.z + s1 * b.z };
+	}
+
+	// naive linear interpolation of the components, then renormalized back onto the unit sphere
+	function nlerp(qa, qb, t)
+	{
+		let dot = qa.w * qb.w + qa.x * qb.x + qa.y * qb.y + qa.z * qb.z;
+		let b = qb;
+		if (dot < 0) b = { w: -qb.w, x: -qb.x, y: -qb.y, z: -qb.z };
+		return quatNormalize({
+			w: qa.w + t * (b.w - qa.w), x: qa.x + t * (b.x - qa.x),
+			y: qa.y + t * (b.y - qa.y), z: qa.z + t * (b.z - qa.z)
+		});
+	}
+
+	// arcball: map a 2D mouse position (relative to the ball's screen center/radius) to a point on/around a unit hemisphere
+	function arcballPoint(mx, my, center, radius)
+	{
+		let nx = (mx - center.x) / radius, ny = -(my - center.y) / radius;
+		let d2 = nx * nx + ny * ny;
+		if (d2 <= 1) return { x: nx, y: ny, z: Math.sqrt(1 - d2) };
+		let len = Math.sqrt(d2);
+		return { x: nx / len, y: ny / len, z: 0 };
+	}
+	// the (shortest-arc) rotation quaternion that takes unit vector p0 onto unit vector p1
+	function rotationBetweenPoints(p0, p1)
+	{
+		let axis = cross3(p0, p1);
+		let axisLen = norm3(axis);
+		if (axisLen < 1e-9) return { w: 1, x: 0, y: 0, z: 0 };
+		let d = Math.min(1, Math.max(-1, dot3(p0, p1)));
+		let angle = Math.acos(d);
+		return quatFromAxisAngle({ x: axis.x / axisLen, y: axis.y / axisLen, z: axis.z / axisLen }, angle);
+	}
+
+	// ---- the object drawn: a flattened wireframe box (its orientation is unambiguous from any angle) ----
+	const BOX_HALF = { x: 0.35, y: 0.5, z: 0.08 };
+	const BOX_CORNERS = [];
+	for (let i = 0; i < 8; i++)
+		BOX_CORNERS.push({ x: (i & 4 ? 1 : -1) * BOX_HALF.x, y: (i & 2 ? 1 : -1) * BOX_HALF.y, z: (i & 1 ? 1 : -1) * BOX_HALF.z });
+	const BOX_EDGES = [];
+	for (let i = 0; i < 8; i++)
+		for (let bit of [1, 2, 4])
+		{
+			let j = i ^ bit;
+			if (j > i) BOX_EDGES.push([i, j]);
+		}
+	const AXIS_LEN = 1.3;
+
+	// fixed isometric-like viewing angle, applied after the object's own orientation
+	const CAM_Q = quatMultiply(quatFromAxisAngle({ x: 1, y: 0, z: 0 }, -0.45), quatFromAxisAngle({ x: 0, y: 1, z: 0 }, 0.6));
+
+	function projectPoint(q, center, scale, localPoint)
+	{
+		let world = rotateVec(q, localPoint);
+		let view = rotateVec(CAM_Q, world);
+		return { x: center.x + view.x * scale, y: center.y - view.y * scale, z: view.z };
+	}
+	// project a point that is already expressed in world/rest space (no object rotation applied) --
+	// used for the rotation axis and angle arc, which describe q itself rather than a point on the object
+	function projectWorldPoint(center, scale, worldPoint)
+	{
+		let view = rotateVec(CAM_Q, worldPoint);
+		return { x: center.x + view.x * scale, y: center.y - view.y * scale, z: view.z };
+	}
+
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.requestID = -1;
+
+			this.q = { w: 1, x: 0, y: 0, z: 0 };
+			this.dragging = false;
+			this.qAtDragStart = null;
+			this.pStart = null;
+
+			this.mainCenter = { x: 340, y: 350 };
+			this.mainRadius = 250;
+			this.showAxisAngle = true;
+
+			this.qA = { w: 1, x: 0, y: 0, z: 0 };
+			this.qB = quatFromAxisAngle({ x: 0.3, y: 1, z: 0.2 }, Math.PI * 0.9);
+			this.playing = false;
+			this.t = 0;
+			this.playDir = 1;
+			this.playSpeed = 0.35;	// t per second
+			this.qSlerpPrev = this.qA;
+			this.qNlerpPrev = this.qA;
+			this.slerpSpeed = 0;
+			this.nlerpSpeed = 0;
+			this.lastFrameTime = performance.now();
+
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);
+			this.canvas.addEventListener("touchstart", this.touchStart.bind(this), { passive: false });
+			this.canvas.addEventListener("touchmove", this.touchMove.bind(this), { passive: false });
+			this.canvas.addEventListener("touchend", this.touchEnd.bind(this), { passive: false });
+
+			this.mainLoop();
+		}
+
+		resetOrientation() { this.q = { w: 1, x: 0, y: 0, z: 0 }; }
+		negateQ() { this.q = { w: -this.q.w, x: -this.q.x, y: -this.q.y, z: -this.q.z }; }
+
+		setKeyframe(which)
+		{
+			if (which === 'A') this.qA = { ...this.q };
+			else this.qB = { ...this.q };
+			this.t = 0;
+			this.qSlerpPrev = this.qA;
+			this.qNlerpPrev = this.qA;
+		}
+
+		togglePlay() { this.playing = !this.playing; }
+
+		nonCommDemo(order)
+		{
+			let rx = quatFromAxisAngle({ x: 1, y: 0, z: 0 }, Math.PI / 2);
+			let ry = quatFromAxisAngle({ x: 0, y: 1, z: 0 }, Math.PI / 2);
+			this.q = order === 'xy' ? quatMultiply(ry, rx) : quatMultiply(rx, ry);
+		}
+
+		updateStats()
+		{
+			let q = this.q;
+			document.getElementById("qVals").innerHTML = `${q.w.toFixed(3)}, ${q.x.toFixed(3)}, ${q.y.toFixed(3)}, ${q.z.toFixed(3)}`;
+			document.getElementById("qNorm").innerHTML = quatNorm(q).toFixed(4);
+			let aa = quatToAxisAngle(q);
+			document.getElementById("qAxis").innerHTML = `${aa.axis.x.toFixed(2)}, ${aa.axis.y.toFixed(2)}, ${aa.axis.z.toFixed(2)}`;
+			document.getElementById("qAngle").innerHTML = (aa.angle * 180 / Math.PI).toFixed(1);
+			document.getElementById("tVal").innerHTML = this.t.toFixed(2);
+			document.getElementById("slerpSpeed").innerHTML = this.slerpSpeed.toFixed(1);
+			document.getElementById("nlerpSpeed").innerHTML = this.nlerpSpeed.toFixed(1);
+		}
+
+		drawGizmo(q, center, scale, drawAxes, ghost)
+		{
+			let c = this.c;
+			let screenCorners = BOX_CORNERS.map(p => projectPoint(q, center, scale, p));
+			let edgesWithDepth = BOX_EDGES.map(([i, j]) => ({ i, j, depth: (screenCorners[i].z + screenCorners[j].z) / 2 }));
+			edgesWithDepth.sort((a, b) => a.depth - b.depth);
+			if (ghost) c.setLineDash([4, 4]);
+			for (let e of edgesWithDepth)
+			{
+				if (ghost)
+				{
+					c.strokeStyle = "rgba(107,114,128,0.5)";
+					c.lineWidth = 1.5;
+				}
+				else
+				{
+					let t = Math.min(1, Math.max(0, (e.depth + 0.7) / 1.4));
+					c.strokeStyle = `rgba(30,41,59,${(0.35 + 0.65 * t).toFixed(3)})`;
+					c.lineWidth = 1 + 2 * t;
+				}
+				c.beginPath();
+				c.moveTo(screenCorners[e.i].x, screenCorners[e.i].y);
+				c.lineTo(screenCorners[e.j].x, screenCorners[e.j].y);
+				c.stroke();
+			}
+			if (ghost) c.setLineDash([]);
+
+			if (drawAxes)
+			{
+				let axes = [{ x: AXIS_LEN, y: 0, z: 0, color: '#e61e1e' }, { x: 0, y: AXIS_LEN, z: 0, color: '#10b981' }, { x: 0, y: 0, z: AXIS_LEN, color: '#4673e5' }];
+				let origin = projectPoint(q, center, scale, { x: 0, y: 0, z: 0 });
+				for (let a of axes)
+				{
+					let tip = projectPoint(q, center, scale, { x: a.x, y: a.y, z: a.z });
+					c.strokeStyle = a.color;
+					c.lineWidth = 3;
+					c.beginPath();
+					c.moveTo(origin.x, origin.y);
+					c.lineTo(tip.x, tip.y);
+					c.stroke();
+				}
+			}
+		}
+
+		// a small filled triangle at `tip`, oriented along the base->tip screen direction
+		drawArrowhead(base, tip, color)
+		{
+			let c = this.c;
+			let dx = tip.x - base.x, dy = tip.y - base.y;
+			let len = Math.sqrt(dx * dx + dy * dy);
+			if (len < 1e-3) return;
+			let ux = dx / len, uy = dy / len;
+			let size = 11;
+			c.fillStyle = color;
+			c.beginPath();
+			c.moveTo(tip.x, tip.y);
+			c.lineTo(tip.x - ux * size - uy * size * 0.5, tip.y - uy * size + ux * size * 0.5);
+			c.lineTo(tip.x - ux * size + uy * size * 0.5, tip.y - uy * size - ux * size * 0.5);
+			c.closePath();
+			c.fill();
+		}
+
+		// visualize what the numbers in the "Axis" / "Angle" stats actually mean: the axis as an
+		// arrowed line through the origin, and the angle as a swept arc (a "protractor") around it,
+		// from a reference direction (the ghost box's rest pose) to the current orientation
+		drawAxisAndAngle(q, center, scale)
+		{
+			let c = this.c;
+			let aa = quatToAxisAngle(q);
+			if (aa.angle < 1e-3) return;	// (near-)identity: no meaningful axis to draw
+
+			let axis = aa.axis;
+			let far = { x: axis.x * AXIS_LEN * 1.15, y: axis.y * AXIS_LEN * 1.15, z: axis.z * AXIS_LEN * 1.15 };
+			let near = { x: -far.x, y: -far.y, z: -far.z };
+			let pFar = projectWorldPoint(center, scale, far);
+			let pNear = projectWorldPoint(center, scale, near);
+
+			c.strokeStyle = "#f59e0b";
+			c.lineWidth = 2.5;
+			c.beginPath();
+			c.moveTo(pNear.x, pNear.y);
+			c.lineTo(pFar.x, pFar.y);
+			c.stroke();
+			this.drawArrowhead(pNear, pFar, "#f59e0b");	// direction of n̂ (right-hand rule for the rotation)
+
+			// the swept angle, traced from an arbitrary vector perpendicular to the axis (angle 0)
+			// to that same vector rotated by θ around the axis (angle θ) -- exactly the rotation q performs
+			let radius = scale * 0.62;
+			let v0 = perpendicularVector(axis);
+			let origin = projectWorldPoint(center, scale, { x: 0, y: 0, z: 0 });
+			let p0 = projectWorldPoint(center, scale, { x: v0.x * (radius / scale), y: v0.y * (radius / scale), z: v0.z * (radius / scale) });
+
+			c.strokeStyle = "rgba(139,92,246,0.85)";
+			c.lineWidth = 1.5;
+			c.beginPath(); c.moveTo(origin.x, origin.y); c.lineTo(p0.x, p0.y); c.stroke();
+
+			c.strokeStyle = "#8b5cf6";
+			c.lineWidth = 2.5;
+			c.beginPath();
+			const steps = 28;
+			let pEnd = null;
+			for (let i = 0; i <= steps; i++)
+			{
+				let v = rotatePerpVector(v0, axis, aa.angle * i / steps);
+				let p = projectWorldPoint(center, scale, { x: v.x * (radius / scale), y: v.y * (radius / scale), z: v.z * (radius / scale) });
+				if (i === 0) c.moveTo(p.x, p.y); else c.lineTo(p.x, p.y);
+				if (i === steps) pEnd = p;
+			}
+			c.stroke();
+			c.strokeStyle = "rgba(139,92,246,0.85)";
+			c.beginPath(); c.moveTo(origin.x, origin.y); c.lineTo(pEnd.x, pEnd.y); c.stroke();
+
+			let vMid = rotatePerpVector(v0, axis, aa.angle / 2);
+			let pMid = projectWorldPoint(center, scale, { x: vMid.x * (radius * 1.3 / scale), y: vMid.y * (radius * 1.3 / scale), z: vMid.z * (radius * 1.3 / scale) });
+			c.fillStyle = "#8b5cf6";
+			c.font = "bold 14px Inter, sans-serif";
+			c.textAlign = "center"; c.textBaseline = "middle";
+			c.fillText(`θ = ${(aa.angle * 180 / Math.PI).toFixed(0)}°`, pMid.x, pMid.y);
+			c.textAlign = "left"; c.textBaseline = "alphabetic";
+		}
+
+		drawMatrix(matrix, x0, y0, cellSize, title)
+		{
+			let c = this.c;
+			c.fillStyle = "#4b5563";
+			c.font = "13px Inter, sans-serif";
+			c.textAlign = "left"; c.textBaseline = "alphabetic";
+			c.fillText(title, x0, y0 - 12);
+			for (let i = 0; i < 3; i++)
+				for (let j = 0; j < 3; j++)
+				{
+					let x = x0 + j * cellSize, y = y0 + i * cellSize;
+					c.fillStyle = "#ffffff";
+					c.fillRect(x, y, cellSize, cellSize);
+					c.strokeStyle = "#c7d2fe";
+					c.lineWidth = 1;
+					c.strokeRect(x, y, cellSize, cellSize);
+					c.fillStyle = "#1e293b";
+					c.font = "13px Inter, sans-serif";
+					c.textAlign = "center"; c.textBaseline = "middle";
+					c.fillText(matrix[i][j].toFixed(2), x + cellSize / 2, y + cellSize / 2);
+				}
+			c.textAlign = "left"; c.textBaseline = "alphabetic";
+		}
+
+		draw()
+		{
+			let c = this.c;
+			c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+			c.fillStyle = "#ffffff";
+			c.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+			// arcball boundary
+			c.strokeStyle = "#c7d2fe";
+			c.lineWidth = 1.5;
+			c.beginPath();
+			c.arc(this.mainCenter.x, this.mainCenter.y, this.mainRadius, 0, Math.PI * 2);
+			c.stroke();
+
+			c.fillStyle = "#4b5563";
+			c.font = "13px Inter, sans-serif";
+			c.fillText("Drag here to rotate (red=x, green=y, blue=z)", this.mainCenter.x - this.mainRadius, 30);
+
+			let mainScale = this.mainRadius * 0.72;
+			if (this.showAxisAngle)
+				this.drawGizmo({ w: 1, x: 0, y: 0, z: 0 }, this.mainCenter, mainScale, false, true);	// ghost: rest pose, for reference
+
+			this.drawGizmo(this.q, this.mainCenter, mainScale, true);
+
+			if (this.showAxisAngle)
+				this.drawAxisAndAngle(this.q, this.mainCenter, mainScale);
+
+			// quaternion component readout + rotation matrix, top-right
+			this.drawMatrix(quatToMatrix(this.q), 760, 140, 55, "Rotation matrix R(q)");
+
+			// SLERP vs naive LERP comparison, bottom of the canvas
+			let leftCenter = { x: 260, y: 800 }, rightCenter = { x: 770, y: 800 };
+			let miniScale = 140;
+
+			c.fillStyle = "#4b5563";
+			c.font = "bold 14px Inter, sans-serif";
+			c.textAlign = "center";
+			c.fillText("SLERP (constant angular speed)", leftCenter.x, 660);
+			c.fillText("Naive LERP + normalize (speeds up mid-way)", rightCenter.x, 660);
+			c.textAlign = "left";
+
+			let qSlerp = slerp(this.qA, this.qB, this.t);
+			let qNlerp = nlerp(this.qA, this.qB, this.t);
+			this.drawGizmo(qSlerp, leftCenter, miniScale, false);
+			this.drawGizmo(qNlerp, rightCenter, miniScale, false);
+		}
+
+		mainLoop()
+		{
+			let now = performance.now();
+			let dt = Math.min(0.05, (now - this.lastFrameTime) / 1000);
+			this.lastFrameTime = now;
+
+			if (this.playing)
+			{
+				this.t += this.playDir * this.playSpeed * dt;
+				if (this.t >= 1) { this.t = 1; this.playDir = -1; }
+				if (this.t <= 0) { this.t = 0; this.playDir = 1; }
+			}
+
+			let qSlerp = slerp(this.qA, this.qB, this.t);
+			let qNlerp = nlerp(this.qA, this.qB, this.t);
+			if (dt > 1e-4)
+			{
+				this.slerpSpeed = quatAngleBetween(this.qSlerpPrev, qSlerp) * 180 / Math.PI / dt;
+				this.nlerpSpeed = quatAngleBetween(this.qNlerpPrev, qNlerp) * 180 / Math.PI / dt;
+			}
+			this.qSlerpPrev = qSlerp;
+			this.qNlerpPrev = qNlerp;
+
+			this.updateStats();
+			this.draw();
+			this.requestID = window.requestAnimationFrame(this.mainLoop.bind(this));
+		}
+
+		pickArcball(pos)
+		{
+			let dx = pos.x - this.mainCenter.x, dy = pos.y - this.mainCenter.y;
+			return Math.sqrt(dx * dx + dy * dy) <= this.mainRadius * 1.15;
+		}
+
+		mouseDown(event)
+		{
+			if (event.which == 1)
+			{
+				let pos = this.getMousePos(this.canvas, event);
+				if (this.pickArcball(pos))
+				{
+					this.dragging = true;
+					this.qAtDragStart = { ...this.q };
+					this.pStart = arcballPoint(pos.x, pos.y, this.mainCenter, this.mainRadius);
+				}
+			}
+		}
+
+		getMousePos(canvas, event)
+		{
+			const rect = canvas.getBoundingClientRect();
+			const scaleX = canvas.width / rect.width;
+			const scaleY = canvas.height / rect.height;
+			return {
+				x: (event.clientX - rect.left) * scaleX,
+				y: (event.clientY - rect.top) * scaleY
+			};
+		}
+
+		mouseMove(event)
+		{
+			if (this.dragging)
+			{
+				let pos = this.getMousePos(this.canvas, event);
+				let pCurrent = arcballPoint(pos.x, pos.y, this.mainCenter, this.mainRadius);
+				let qDrag = rotationBetweenPoints(this.pStart, pCurrent);
+				this.q = quatNormalize(quatMultiply(qDrag, this.qAtDragStart));
+			}
+		}
+
+		mouseUp(event) { this.dragging = false; }
+
+		getTouchClient(event)
+		{
+			const t = event.touches.length > 0 ? event.touches[0] : event.changedTouches[0];
+			return { clientX: t.clientX, clientY: t.clientY };
+		}
+
+		touchStart(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseDown({ which: 1, ...this.getTouchClient(event) });
+		}
+
+		touchMove(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseMove(this.getTouchClient(event));
+		}
+
+		touchEnd(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 0)
+				this.mouseUp(event);
+		}
+	}
+
+	gui = new GUI();
+</script>
+
+</body>
+</html>

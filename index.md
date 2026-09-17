@@ -11,6 +11,7 @@ I hope the examples and their documentation help you to learn something about th
 # General
 
 * [Barycentric coordinates](examples/barycentric_coordinates.html)
+* [Quaternion rotation](examples/quaternion_rotation.html)
 * [Finite differences](examples/finite_differences.html)
 * [Heat equation](examples/heat_equation.html)
 
