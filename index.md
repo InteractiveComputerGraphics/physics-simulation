@@ -13,6 +13,7 @@ I hope the examples and their documentation help you to learn something about th
 * [Barycentric coordinates](examples/barycentric_coordinates.html)
 * [Quaternion rotation](examples/quaternion_rotation.html)
 * [Finite differences](examples/finite_differences.html)
+* [Numerical integration](examples/numerical_integration.html)
 * [Heat equation](examples/heat_equation.html)
 
 # Newton's method

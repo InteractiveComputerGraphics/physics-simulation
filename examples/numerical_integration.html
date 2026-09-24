@@ -1,0 +1,482 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
+	<title>Numerical Integration</title>
+	<style>
+		/* the two plots should share the available width instead of
+		   using their intrinsic (fixed) Plotly size, which overflows
+		   the page's max width */
+		.plots-grid {
+			grid-template-columns: 1fr 1fr;
+			gap: 16px;
+		}
+		.plots-grid > div {
+			min-width: 0;		/* allow grid items to shrink below content size */
+			width: 100%;
+		}
+		@media (max-width: 820px) {
+			.plots-grid { grid-template-columns: 1fr; }
+		}
+	</style>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>Numerical Integration: Quadrature Rules</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: plots + controls -->
+	<div class="card sim-panel">
+		<div class="sim-canvas-wrap">
+			<div class="plots-grid" width="100%">
+				<div id="plotOutput" style="border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+				<div id="plotOutput2" style="border:0px solid #000000;border-radius: 0px;background-color:#EEEEEE"></div>
+			</div>
+		</div>
+	</div>
+	<div class="controls-panel" style="width: 100%;align:center;margin-left:auto;margin-right:auto">
+		<h3>Controls</h3>
+		<div class="controls-grid" style="width: 460px;align:left">
+			<label for="fct">Function</label>
+			<select onchange="plot.reset()" id="fct" size="1">
+				<option>Polynomial: x⁴ − x² + 1</option>
+				<option selected="selected">Smooth oscillation: cos(3x)</option>
+				<option>Exponential: eˣ</option>
+				<option>Runge function: 1/(1+25x²)</option>
+				<option>Non-smooth: |x|</option>
+			</select>
+
+			<label for="ruleInput">Standard rule (left plot)</label>
+			<select onchange="plot.reset()" id="ruleInput" size="1">
+				<option>Midpoint rule</option>
+				<option>Trapezoidal rule</option>
+				<option>Simpson's rule</option>
+			</select>
+
+			<label for="nInput">Number of nodes n</label>
+			<span class="stat-value" id="nDisplay">5</span>
+
+			<label></label>
+			<input oninput="plot.reset()" id="nInput" type="range" min="1" max="15" step="1" value="5">
+
+			<div class="full-width" style="margin-top:10px;border-top:1px solid #e0e7ff;padding-top:10px;">
+				<pre id="resultsInfo" style="white-space:pre-wrap;font-family:'Consolas','Menlo',monospace;font-size:0.78rem;color:#374151;background:#f5f7ff;border-radius:8px;padding:10px;margin:0;"></pre>
+			</div>
+		</div>
+	</div>
+
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>Approximating definite integrals with quadrature rules</h2>
+		<p>A <em>quadrature rule</em> approximates a definite integral by a weighted sum of function values at a finite number of sample points ("nodes"):
+		$$\int_a^b f(x)\,dx \;\approx\; \sum_{i=1}^{n} w_i \, f(x_i).$$
+		All rules below are stated on the reference interval $u \in [-1,1]$. An integral over an arbitrary interval $[a,b]$ is mapped onto it with the linear substitution
+		$$\int_a^b f(x)\,dx = \frac{b-a}{2} \int_{-1}^{1} f\!\left(\frac{b-a}{2}u + \frac{a+b}{2}\right) du,$$
+		so any rule for $[-1,1]$ immediately gives a rule for $[a,b]$.</p>
+
+		<h3>Standard (Newton&ndash;Cotes) rules</h3>
+		<p>All Newton&ndash;Cotes rules follow the same recipe: fix the nodes to be <em>equally spaced</em> in advance, replace $f$ on each subinterval by the polynomial that interpolates it at those nodes, and integrate that polynomial exactly &mdash; its integral is a fixed linear combination of the sampled values, which is exactly where the weights $w_i$ come from. Because the nodes are fixed rather than optimized, this only pins down $n$ degrees of freedom (the weights), not the $2n$ that Gauss&ndash;Legendre gets to use below. With $n$ subintervals of width $h = 2/n$ on $[-1,1]$:</p>
+		<ul>
+		<li><b>Midpoint rule</b> replaces $f$ on each subinterval by the <em>constant</em> $f(x_i)$ sampled at its centre, so $w_i = h$ for all $i$. Concretely, with centres $x_i = -1 + h\big(i+\frac12\big)$, $i=0,\dots,n-1$, the integral is approximated by
+		$$\int_{-1}^{1}\! f(u)\,du \;\approx\; h\sum_{i=0}^{n-1} f(x_i) \;=\; h\big[f(x_0)+f(x_1)+\cdots+f(x_{n-1})\big].$$
+		Left plot: every rectangle has the <em>same</em> width $h$ and height $f(x_i)$, and this sum is exactly the total shaded area. A Taylor expansion of $f$ around the centre $x_i$ gives the local (single-panel) error
+		$$\int_{x_i-h/2}^{x_i+h/2}\! f(x)\,dx \;-\; h\,f(x_i) \;=\; \frac{h^3}{24}f''(\xi_i)$$
+		for some $\xi_i$ in the panel; summing the $n$ panels leaves a global error of order $O(h^2)$, explicitly bounded by $\frac{b-a}{24}h^2 \max|f''|$.</li>
+		<li><b>Trapezoidal rule</b> replaces $f$ on each subinterval by the <em>line</em> through its two endpoint samples, so consecutive panels share a node: $w_i = h$ except at the two ends of the composite rule, where $w_0 = w_n = h/2$. With boundary samples $x_i = -1+ih$, $i=0,\dots,n$, this gives
+		$$\int_{-1}^{1}\! f(u)\,du \;\approx\; h\left[\frac{f(x_0)}{2} + f(x_1) + \cdots + f(x_{n-1}) + \frac{f(x_n)}{2}\right],$$
+		i.e. every interior sample counts once, and the two endpoint samples &mdash; shared by only one panel each &mdash; count half as much. Its local error
+		$$\int_{x_i}^{x_i+h}\! f(x)\,dx \;-\; \frac{h}{2}\big(f(x_i)+f(x_i{+}h)\big) \;=\; -\frac{h^3}{12}f''(\xi_i)$$
+		has the <em>same order</em> $O(h^2)$ as the midpoint rule &mdash; globally $\frac{b-a}{12}h^2\max|f''|$ &mdash; but with twice the error constant and the opposite sign. (That the two errors are related this simply is exactly what Romberg-style extrapolation methods, not covered here, exploit to cancel the leading term and jump to a higher order for free.)</li>
+		<li><b>Simpson's rule</b> replaces $f$ on each <em>pair</em> of subintervals ($n$ even) by the <em>parabola</em> through its 3 samples. With the same boundary samples $x_i = -1+ih$, $i=0,\dots,n$, as the trapezoidal rule, integrating each parabola and summing gives the alternating-weight formula
+		$$\int_{-1}^{1}\! f(u)\,du \;\approx\; \frac{h}{3}\Big[f(x_0) + 4f(x_1) + 2f(x_2) + 4f(x_3) + 2f(x_4) + \cdots + 4f(x_{n-1}) + f(x_n)\Big],$$
+		i.e. weights $\frac{h}{3},\frac{4h}{3},\frac{2h}{3},\frac{4h}{3},\dots,\frac{h}{3}$: endpoints count once, odd-indexed (parabola-centre) samples count $4\times$, even-indexed (shared parabola-boundary) samples count $2\times$. A parabola has one more free coefficient than a line, yet still only has to match its 3 sample points exactly &mdash; the same "one interpolation condition per coefficient" balance as the midpoint and trapezoidal rules &mdash; but this happens to buy <em>two full polynomial degrees</em> of exactness at once (Simpson's rule integrates cubics exactly, not just parabolas, because the leading cubic term is odd and cancels by symmetry around the midpoint). The local error over one pair of panels is
+		$$-\frac{h^5}{90}f^{(4)}(\xi_i),$$
+		giving a global error of order $O(h^4)$, i.e. $\frac{b-a}{180}h^4\max|f^{(4)}|$ &mdash; markedly better than the other two for the same $h$, but the nodes are still equally spaced and fixed a priori, unlike Gauss&ndash;Legendre below.</li>
+		</ul>
+		<p>All three formulas above assume $f$ is smooth enough for the relevant derivative ($f''$ or $f^{(4)}$) to exist and stay bounded; the "Non-smooth: $|x|$" test function violates this at $u=0$; try it with each rule and note how the error columns in the results table drop to the common, much slower, first-order rate regardless of which rule is selected.</p>
+
+		<h3>Gauss&ndash;Legendre quadrature</h3>
+		<p>Gauss&ndash;Legendre quadrature keeps the same basic shape as the rules above &mdash; a weighted sum of $n$ samples,
+		$$\int_{-1}^{1}\! f(u)\,du \;\approx\; \sum_{a=1}^{n} w_a\, f(s_a) \;=\; w_1 f(s_1) + w_2 f(s_2) + \cdots + w_n f(s_n),$$
+		but no longer fixes the nodes $s_a$ in advance. Instead it treats <em>both</em> the $n$ nodes $s_a$ and the $n$ weights $w_a$ as free parameters &mdash; $2n$ degrees of freedom in total &mdash; and chooses them so that the rule integrates every polynomial of degree $\le 2n-1$ <em>exactly</em>. This is twice the polynomial degree a Newton&ndash;Cotes rule can reach with the same number of samples. The optimal nodes turn out to be the roots of the $n$-th Legendre polynomial $P_n$, and the corresponding weights follow directly from them:
+		$$P_n(s_a) = 0, \qquad w_a = \frac{2}{\left(1-s_a^2\right)\left[P_n'(s_a)\right]^2}.$$
+		The Legendre polynomials satisfy the recurrence $P_0=1$, $P_1(u)=u$, $k P_k(u) = (2k-1)\,u\,P_{k-1}(u) - (k-1)P_{k-2}(u)$, which is used together with Newton's method (starting from $s_a^{(0)} = \cos\!\big(\pi\,\frac{a-0.25}{n+0.5}\big)$) to compute the $s_a$ in the code below &mdash; the same approach as the classic <tt>gauleg</tt> routine [PTVF07].</p>
+		<p>Because the weights are no longer all equal, the right plot draws the $a$-th term $w_a f(s_a)$ of the sum as a rectangle of <em>height</em> $\psi(s_a)$ centred at the node $s_a$, whose <em>width</em> is the weight $w_a$ itself (widths sum to $2$, the length of $[-1,1]$, just like the subinterval widths on the left). A wide rectangle marks a node that "represents" a larger share of the interval; nodes cluster more densely near the ends of $[-1,1]$, where the Legendre polynomial's roots naturally accumulate, which is what keeps their individual weights roughly balanced.</p>
+
+		<h3>Why Gauss&ndash;Legendre usually wins</h3>
+		<p>For a smooth (analytic) integrand, Gauss&ndash;Legendre quadrature converges <em>spectrally</em> &mdash; the error shrinks faster than any polynomial power of $1/n$ &mdash; while the Newton&ndash;Cotes rules above are stuck at their fixed algebraic order ($O(h^2)$ or $O(h^4)$). Increase $n$ for the smooth test functions below and watch the reported error columns: the Gauss&ndash;Legendre error collapses to machine precision within a handful of points, long before the other rules catch up. This advantage disappears for the non-smooth test function $f(x)=|x|$, whose derivative jumps at $x=0$: there, Gauss&ndash;Legendre still converges, but only at the same modest algebraic rate as the other rules, because the argument that guarantees spectral convergence relies on $f$ being (arbitrarily often) differentiable.</p>
+
+		<h3>References</h3>
+		<ul>
+		<li>[PTVF07] W. Press, S. Teukolsky, W. Vetterling, B. Flannery. Numerical Recipes: The Art of Scientific Computing, 3rd ed., Cambridge University Press, 2007. (Sect. 4.6, routine <tt>gauleg</tt>)</li>
+		<li>[GW69] G. Golub, J. Welsch. Calculation of Gauss Quadrature Rules. Mathematics of Computation, 1969, 23, 221&ndash;230.</li>
+		<li>[SB02] J. Stoer, R. Bulirsch. Introduction to Numerical Analysis, 3rd ed., Springer, 2002.</li>
+		<li>[AS64] M. Abramowitz, I. Stegun (eds.). Handbook of Mathematical Functions. National Bureau of Standards, 1964. (Tables of Gauss&ndash;Legendre nodes/weights)</li>
+		</ul>
+	</div>
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	class Plot
+	{
+		constructor()
+		{
+			// test functions on [-1,1] together with their closed-form exact integral
+			this.functions = {
+				"Polynomial: x⁴ − x² + 1": {
+					f: x => x*x*x*x - x*x + 1,
+					exact: 2 * (1/5 - 1/3 + 1)
+				},
+				"Smooth oscillation: cos(3x)": {
+					f: x => Math.cos(3*x),
+					exact: 2 * Math.sin(3) / 3
+				},
+				"Exponential: eˣ": {
+					f: x => Math.exp(x),
+					exact: Math.exp(1) - Math.exp(-1)
+				},
+				"Runge function: 1/(1+25x²)": {
+					f: x => 1 / (1 + 25*x*x),
+					exact: 0.4 * Math.atan(5)
+				},
+				"Non-smooth: |x|": {
+					f: x => Math.abs(x),
+					exact: 1.0
+				}
+			};
+
+			this.reset();
+		}
+
+		reset()
+		{
+			this.name = document.getElementById('fct').value;
+			this.info = this.functions[this.name];
+			this.rule = document.getElementById('ruleInput').value;
+			this.n = parseInt(document.getElementById('nInput').value);
+			document.getElementById('nDisplay').innerHTML = this.n;
+
+			this.plotStandard();
+			this.plotGaussLegendre();
+			this.updateResults();
+		}
+
+		// ---------------------------------------------------------------
+		// Legendre polynomial P_n(x) and its derivative via the 3-term
+		// recurrence k P_k = (2k-1) x P_{k-1} - (k-1) P_{k-2}
+		// ---------------------------------------------------------------
+		legendre(n, x)
+		{
+			let p0 = 1.0, p1 = x;
+			for (let k = 2; k <= n; k++)
+			{
+				let p2 = ((2*k - 1) * x * p1 - (k - 1) * p0) / k;
+				p0 = p1;
+				p1 = p2;
+			}
+			let dP = n * (x * p1 - p0) / (x*x - 1);
+			return { P: p1, dP: dP };
+		}
+
+		// Gauss-Legendre nodes & weights on [-1,1], n >= 1, via Newton's
+		// method on the Legendre polynomial (same idea as gauleg [PTVF07])
+		gaussLegendreNodesWeights(n)
+		{
+			let nodes = new Array(n);
+			let weights = new Array(n);
+			let m = Math.ceil(n / 2);		// roots come in +/- pairs (symmetric)
+
+			for (let i = 0; i < m; i++)
+			{
+				let x = Math.cos(Math.PI * (i + 0.75) / (n + 0.5));	// initial guess
+				for (let iter = 0; iter < 100; iter++)
+				{
+					let { P, dP } = this.legendre(n, x);
+					let dx = -P / dP;
+					x += dx;
+					if (Math.abs(dx) < 1.0e-15)
+						break;
+				}
+				let { dP } = this.legendre(n, x);
+				let w = 2.0 / ((1.0 - x*x) * dP*dP);
+
+				nodes[i] = -x;			weights[i] = w;
+				nodes[n - 1 - i] = x;	weights[n - 1 - i] = w;
+			}
+			return { nodes, weights };
+		}
+
+		// ---------------------------------------------------------------
+		// Newton-Cotes rules on [-1,1]
+		// ---------------------------------------------------------------
+		midpointRule(n)
+		{
+			let h = 2.0 / n;
+			let nodes = [], weights = [];
+			for (let i = 0; i < n; i++)
+			{
+				nodes.push(-1 + h * (i + 0.5));
+				weights.push(h);
+			}
+			return { nodes, weights };
+		}
+
+		// n subintervals -> n+1 sample points
+		trapezoidalRule(n)
+		{
+			let h = 2.0 / n;
+			let nodes = [], weights = [];
+			for (let i = 0; i <= n; i++)
+			{
+				nodes.push(-1 + h * i);
+				weights.push((i === 0 || i === n) ? h/2 : h);
+			}
+			return { nodes, weights };
+		}
+
+		// n subintervals (must be even) -> n+1 sample points
+		simpsonRule(n)
+		{
+			let h = 2.0 / n;
+			let nodes = [], weights = [];
+			for (let i = 0; i <= n; i++)
+			{
+				nodes.push(-1 + h * i);
+				let w;
+				if (i === 0 || i === n)
+					w = h/3;
+				else if (i % 2 === 1)
+					w = 4*h/3;
+				else
+					w = 2*h/3;
+				weights.push(w);
+			}
+			return { nodes, weights };
+		}
+
+		approxIntegral(nodes, weights, f)
+		{
+			let sum = 0.0;
+			for (let i = 0; i < nodes.length; i++)
+				sum += weights[i] * f(nodes[i]);
+			return sum;
+		}
+
+		// dense samples of the quadratic interpolant through 3 equally
+		// spaced points (x0,y0), (x1,y1), (x2,y2) -- used to draw Simpson's rule
+		quadraticSamples(x0, y0, x1, y1, x2, y2, steps)
+		{
+			let px = [], py = [];
+			for (let s = 0; s <= steps; s++)
+			{
+				let x = x0 + (x2 - x0) * s / steps;
+				let L0 = (x-x1)*(x-x2) / ((x0-x1)*(x0-x2));
+				let L1 = (x-x0)*(x-x2) / ((x1-x0)*(x1-x2));
+				let L2 = (x-x0)*(x-x1) / ((x2-x0)*(x2-x1));
+				px.push(x);
+				py.push(y0*L0 + y1*L1 + y2*L2);
+			}
+			return { px, py };
+		}
+
+		// left plot: the standard (Newton-Cotes) rule currently selected
+		plotStandard()
+		{
+			let f = this.info.f;
+			let n = this.n;
+			let rule = this.rule;
+
+			let numCurve = 400;
+			let xs = [], ys = [];
+			for (let i = 0; i <= numCurve; i++)
+			{
+				let x = -1 + 2 * i / numCurve;
+				xs.push(x);
+				ys.push(f(x));
+			}
+
+			let data = [{ x: xs, y: ys, mode: 'lines', name: 'f(u)', line: { color: '#334155', width: 2 } }];
+			let shapes = [];
+			let approx, usedN = n;
+
+			if (rule === 'Midpoint rule')
+			{
+				let { nodes, weights } = this.midpointRule(n);
+				approx = this.approxIntegral(nodes, weights, f);
+				for (let i = 0; i < n; i++)
+				{
+					shapes.push({
+						type: 'rect',
+						x0: nodes[i] - weights[i]/2, x1: nodes[i] + weights[i]/2,
+						y0: 0, y1: f(nodes[i]),
+						fillcolor: 'rgba(70,115,229,0.28)', line: { color: '#4673e5', width: 1.5 }
+					});
+				}
+				data.push({ x: nodes, y: nodes.map(f), mode: 'markers', name: 'nodes', marker: { color: '#2e4081', size: 7 } });
+			}
+			else if (rule === 'Trapezoidal rule')
+			{
+				let { nodes, weights } = this.trapezoidalRule(n);
+				approx = this.approxIntegral(nodes, weights, f);
+				usedN = n + 1;
+				data.push({
+					x: nodes, y: nodes.map(f), mode: 'lines+markers', name: 'trapezoids',
+					line: { color: '#4673e5', width: 2 }, marker: { color: '#2e4081', size: 6 },
+					fill: 'tozeroy', fillcolor: 'rgba(70,115,229,0.22)'
+				});
+			}
+			else // Simpson's rule
+			{
+				let m = (n % 2 === 0) ? n : n + 1;
+				let { nodes, weights } = this.simpsonRule(m);
+				approx = this.approxIntegral(nodes, weights, f);
+				usedN = m + 1;
+
+				let px = [], py = [];
+				for (let i = 0; i < m; i += 2)
+				{
+					let s = this.quadraticSamples(nodes[i], f(nodes[i]), nodes[i+1], f(nodes[i+1]), nodes[i+2], f(nodes[i+2]), 20);
+					px = px.concat(s.px);
+					py = py.concat(s.py);
+				}
+				data.push({
+					x: px, y: py, mode: 'lines', name: 'parabolic segments',
+					line: { color: '#4673e5', width: 2 }, fill: 'tozeroy', fillcolor: 'rgba(70,115,229,0.22)'
+				});
+				data.push({ x: nodes, y: nodes.map(f), mode: 'markers', name: 'nodes', marker: { color: '#2e4081', size: 6 } });
+			}
+
+			let err = Math.abs(approx - this.info.exact);
+			let layout = {
+				title: {
+					text: `${rule}  (${usedN} evals)<br>I ≈ ${approx.toFixed(5)}  (error ${err.toExponential(2)})`,
+					font: { size: 13 }
+				},
+				autosize: true, height: 460,
+				margin: { t: 62, r: 20, b: 40, l: 50 },
+				xaxis: { range: [-1.08, 1.08], tickvals: [-1, 0, 1], title: 'u' },
+				showlegend: false,
+				shapes: shapes
+			};
+			Plotly.newPlot('plotOutput', data, layout, { responsive: true });
+		}
+
+		// right plot: n-point Gauss-Legendre quadrature, drawn with
+		// rectangles whose width is the quadrature weight w_a (see theory)
+		plotGaussLegendre()
+		{
+			let f = this.info.f;
+			let n = this.n;
+			let { nodes, weights } = this.gaussLegendreNodesWeights(n);
+			let approx = this.approxIntegral(nodes, weights, f);
+
+			let numCurve = 400;
+			let xs = [], ys = [];
+			for (let i = 0; i <= numCurve; i++)
+			{
+				let x = -1 + 2 * i / numCurve;
+				xs.push(x);
+				ys.push(f(x));
+			}
+
+			let shapes = [];
+			for (let i = 0; i < n; i++)
+			{
+				let y = f(nodes[i]);
+				shapes.push({
+					type: 'rect',
+					x0: nodes[i] - weights[i]/2, x1: nodes[i] + weights[i]/2,
+					y0: 0, y1: y,
+					fillcolor: 'rgba(15,118,110,0.22)', line: { color: '#0f766e', width: 1.5 }
+				});
+				shapes.push({
+					type: 'line', x0: nodes[i], x1: nodes[i], y0: 0, y1: y,
+					line: { color: '#94a3b8', width: 1, dash: 'dot' }
+				});
+			}
+
+			let data = [
+				{ x: xs, y: ys, mode: 'lines', name: 'ψ(u)', line: { color: '#0f766e', width: 2 } },
+				{ x: nodes, y: nodes.map(f), mode: 'markers', name: 'ψ(sₐ)', marker: { color: '#0f766e', size: 8 } },
+				{ x: nodes, y: nodes.map(() => 0), mode: 'markers', name: 'sₐ',
+				  marker: { color: '#db2777', size: 8, symbol: 'circle-open', line: { width: 2 } } }
+			];
+
+			let err = Math.abs(approx - this.info.exact);
+			let layout = {
+				title: {
+					text: `Gauss–Legendre quadrature  (${n} evals)<br>I ≈ ${approx.toFixed(5)}  (error ${err.toExponential(2)})`,
+					font: { size: 13 }
+				},
+				autosize: true, height: 460,
+				margin: { t: 62, r: 20, b: 40, l: 50 },
+				xaxis: { range: [-1.08, 1.08], tickvals: [-1, 0, 1], title: 'u' },
+				showlegend: false,
+				shapes: shapes
+			};
+			Plotly.newPlot('plotOutput2', data, layout, { responsive: true });
+		}
+
+		// comparison table beneath the controls
+		updateResults()
+		{
+			let f = this.info.f;
+			let exact = this.info.exact;
+			let n = this.n;
+
+			let mid = this.midpointRule(n);
+			let midApprox = this.approxIntegral(mid.nodes, mid.weights, f);
+
+			let trap = this.trapezoidalRule(n);
+			let trapApprox = this.approxIntegral(trap.nodes, trap.weights, f);
+
+			let simpN = (n % 2 === 0) ? n : n + 1;
+			let simp = this.simpsonRule(simpN);
+			let simpApprox = this.approxIntegral(simp.nodes, simp.weights, f);
+
+			let gl = this.gaussLegendreNodesWeights(n);
+			let glApprox = this.approxIntegral(gl.nodes, gl.weights, f);
+
+			let row = (name, evals, approx) =>
+				name.padEnd(24) + String(evals).padStart(3).padEnd(8) +
+				approx.toFixed(8).padStart(13) + '   ' + Math.abs(approx - exact).toExponential(3);
+
+			let lines = [];
+			lines.push('Exact value:  I = ' + exact.toFixed(8));
+			lines.push('');
+			lines.push('method'.padEnd(24) + 'evals'.padEnd(8) + 'approx'.padStart(13) + '   |error|');
+			lines.push(row('Midpoint rule', n, midApprox));
+			lines.push(row('Trapezoidal rule', n+1, trapApprox));
+			lines.push(row("Simpson's rule", simpN+1, simpApprox));
+			lines.push(row('Gauss-Legendre', n, glApprox));
+
+			if (this.name.indexOf('Non-smooth') !== -1)
+				lines.push('\nNote: |x| is not smooth at u=0, so Gauss-Legendre loses its usual\nfast (spectral) convergence here and only beats the other rules mildly.');
+
+			document.getElementById('resultsInfo').textContent = lines.join('\n');
+		}
+	}
+
+	plot = new Plot();
+</script>
+
+</body>
+</html>
