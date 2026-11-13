@@ -19,7 +19,7 @@ I hope the examples and their documentation help you to learn something about th
 # Linear systems
 
 * [LU decomposition](examples/LU_decomposition.html)
-* [Jacobi and Gauss-Seidel methods](examples/Jacobi_GaussSeidel.html)
+* [Jacobi, Gauss-Seidel and SOR methods](examples/Jacobi_GaussSeidel_SOR.html)
 
 # Newton's method
 

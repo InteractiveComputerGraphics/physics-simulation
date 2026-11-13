@@ -20,7 +20,7 @@
 	</script>
 	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
 	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
-	<title>Jacobi and Gauss-Seidel</title>
+	<title>Jacobi, Gauss-Seidel and SOR</title>
 	<style>
 		.plot-row { display: flex; flex-wrap: wrap; gap: 8px; }
 		.plot-row > div { flex: 1 1 320px; min-width: 0; height: 420px; background-color: #EEEEEE; }
@@ -40,7 +40,7 @@
 <body>
 
 <header class="page-header">
-	<h1>Jacobi and Gauss-Seidel iteration</h1>
+	<h1>Jacobi, Gauss-Seidel and SOR iteration</h1>
 </header>
 
 <main>
@@ -85,7 +85,14 @@
 			<select onchange="viz.render()" id="method" size="1">
 				<option selected="selected">Jacobi</option>
 				<option>Gauss-Seidel</option>
+				<option>SOR</option>
 			</select>
+
+			<label for="omega">Relaxation $\omega$ (SOR)</label>
+			<span class="stat-value"><input type="text" id="omegaText" value="1.25" readonly></span>
+
+			<label></label>
+			<input oninput="viz.updateOmega()" id="omega" value="1.25" type="range" min="0.05" max="1.95" step="0.05">
 
 			<label for="matrix">Matrix</label>
 			<select onchange="viz.reset()" id="matrix" size="1">
@@ -114,7 +121,7 @@
 		Starting with an initial guess $\mathbf{x}^{(0)}$, they compute a sequence of approximations $\mathbf{x}^{(1)}, \mathbf{x}^{(2)}, \dots$ which hopefully converges to the solution of $A\mathbf{x} = \mathbf{b}$.
 		Each iteration only costs about as much as a matrix-vector product, i.e. $\mathcal{O}(n)$ for a sparse matrix.</p>
 
-		<p>Both methods are based on splitting the matrix in its strictly lower triangular part $L$, its diagonal $D$ and its strictly upper triangular part $U$:</p>
+		<p>All methods are based on splitting the matrix in its strictly lower triangular part $L$, its diagonal $D$ and its strictly upper triangular part $U$:</p>
 		$$A = L + D + U.$$
 
 		<h3>Jacobi method</h3>
@@ -131,23 +138,40 @@
 		But the components must be computed sequentially, which makes the parallelization more difficult.
 		In the 2D plot you can see that Gauss-Seidel moves along the coordinate axes: each sub-step solves one equation exactly, i.e. it moves horizontally or vertically onto the line of that equation.</p>
 
+		<h3>Successive over-relaxation (SOR)</h3>
+		<p>SOR is a Gauss-Seidel iteration where each update is scaled with a relaxation parameter $\omega$. First the Gauss-Seidel value $\tilde{x}_i$ is computed, then the step from the old value towards $\tilde{x}_i$ is multiplied by $\omega$:</p>
+		$$\tilde{x}_i = \frac{1}{a_{ii}}\left(b_i - \sum_{j \lt i} a_{ij}\, x_j^{(k+1)} - \sum_{j > i} a_{ij}\, x_j^{(k)}\right), \qquad
+		x_i^{(k+1)} = (1-\omega)\, x_i^{(k)} + \omega\, \tilde{x}_i = x_i^{(k)} + \omega\left(\tilde{x}_i - x_i^{(k)}\right).$$
+		<p>In matrix notation: $\mathbf{x}^{(k+1)} = (D + \omega L)^{-1}\left(\omega\mathbf{b} - \left(\omega U + (\omega - 1) D\right)\mathbf{x}^{(k)}\right)$.</p>
+		<ul>
+			<li>$\omega = 1$: Gauss-Seidel.</li>
+			<li>$\omega > 1$ (over-relaxation): the method takes a larger step than Gauss-Seidel. In the 2D plot the iterates overshoot the line of the equation. If Gauss-Seidel approaches the solution slowly from one side, this can speed up the convergence dramatically.</li>
+			<li>$\omega \lt 1$ (under-relaxation): smaller steps, which can stabilize an iteration that oscillates or diverges.</li>
+		</ul>
+		<p>SOR can only converge for $0 \lt \omega \lt 2$ (Kahan: $\rho(M_{SOR}) \geq |\omega - 1|$). If $A$ is symmetric positive definite, SOR converges for every $\omega \in (0, 2)$ (Ostrowski-Reich).
+		The best choice of $\omega$ depends on the matrix. For consistently ordered matrices (e.g. tridiagonal matrices like the 1D Poisson matrix) the optimal value is known:</p>
+		$$\omega_\text{opt} = \frac{2}{1 + \sqrt{1 - \rho(M_J)^2}}, \qquad \rho(M_{SOR}) = \omega_\text{opt} - 1.$$
+		<p>For the 5x5 Poisson matrix we get $\rho(M_J) = \cos(\pi/6) \approx 0.866$, $\omega_\text{opt} = 4/3$ and $\rho(M_{SOR}) = 1/3$, compared to $\rho(M_{GS}) = 0.75$ for Gauss-Seidel.</p>
+
 		<h3>Convergence</h3>
-		<p>Both methods have the form $\mathbf{x}^{(k+1)} = M\mathbf{x}^{(k)} + \mathbf{c}$ with the iteration matrix
-		$M_J = -D^{-1}(L+U)$ (Jacobi) or $M_{GS} = -(D+L)^{-1}U$ (Gauss-Seidel).
+		<p>All methods have the form $\mathbf{x}^{(k+1)} = M\mathbf{x}^{(k)} + \mathbf{c}$ with the iteration matrix
+		$M_J = -D^{-1}(L+U)$ (Jacobi), $M_{GS} = -(D+L)^{-1}U$ (Gauss-Seidel) or $M_{SOR} = (D + \omega L)^{-1}\left((1-\omega)D - \omega U\right)$ (SOR).
 		The error $\mathbf{e}^{(k)} = \mathbf{x}^{(k)} - \mathbf{x}^*$ satisfies $\mathbf{e}^{(k+1)} = M\mathbf{e}^{(k)}$.
-		Hence, the method converges for every initial guess if and only if the spectral radius $\rho(M) < 1$. The smaller $\rho(M)$, the faster the convergence: in each iteration the error is reduced by about the factor $\rho(M)$.</p>
+		Hence, the method converges for every initial guess if and only if the spectral radius $\rho(M) < 1$.
+		The spectral radius is defined as the largest absolute value of the eigenvalues $\lambda_i$ of $M$: $\rho(M) = \max_i |\lambda_i|$. The smaller $\rho(M)$, the faster the convergence: in each iteration the error is reduced by about the factor $\rho(M)$.</p>
 		<p>Sufficient conditions which are easier to check:</p>
 		<ul>
 			<li>If $A$ is strictly diagonally dominant, i.e. $|a_{ii}| > \sum_{j\neq i} |a_{ij}|$ for all $i$, both methods converge.</li>
-			<li>If $A$ is symmetric positive definite, Gauss-Seidel converges (but Jacobi not necessarily, see example "3x3 SPD, Jacobi diverges").</li>
+			<li>If $A$ is symmetric positive definite, Gauss-Seidel and SOR with $0 \lt \omega \lt 2$ converge (but Jacobi not necessarily, see example "3x3 SPD, Jacobi diverges").</li>
 		</ul>
 		<p>Note that the order of the equations matters: In the example "2x2 not convergent" both methods diverge. If both equations are swapped, the matrix becomes diagonally dominant and both methods converge.</p>
 		<p>In practice the iteration is stopped when the residual $\|\mathbf{b} - A\mathbf{x}^{(k)}\|$ is small enough or a maximum number of iterations is reached.
-		The convergence plot shows the residual of both methods on a logarithmic scale.</p>
+		The convergence plot shows the residual of all methods on a logarithmic scale.</p>
 
 		<h3>Relation to physics simulation</h3>
 		<p>Position based dynamics solves its constraints in a (nonlinear) Gauss-Seidel fashion: one constraint after the other is projected and the updated positions are used immediately.
-		Jacobi-style variants, where all constraints are processed in parallel and the corrections are averaged, are popular on the GPU.</p>
+		Jacobi-style variants, where all constraints are processed in parallel and the corrections are averaged, are popular on the GPU.
+		There, the averaged corrections are often scaled with a relaxation parameter $\omega$ (as in SOR) to speed up the convergence.</p>
 	</div>
 
 </main>
@@ -156,6 +180,7 @@
 	const OLD_COLOR = "#d68910";
 	const NEW_COLOR = "#1e8449";
 	const MAX_ITERATIONS = 100;
+	const METHOD_COLORS = { "Jacobi": "#2471a3", "Gauss-Seidel": "#c0392b", "SOR": "#16a085" };
 
 	// ---------- small linear algebra helpers ----------
 	function matMul(A, B)
@@ -284,20 +309,62 @@
 			return { x: xNew, sub: sub };
 		}
 
+		sorStep(A, b, x)
+		{
+			const n = A.length;
+			const w = this.omega;
+			let xNew = x.slice();               // updated in place
+			let sub = [];                       // state after each component update (for the 2D plot)
+			let gsVal = [];                     // Gauss-Seidel values x~_i (before relaxation)
+			for (let i = 0; i < n; i++)
+			{
+				let s = b[i];
+				for (let j = 0; j < n; j++)
+					if (j != i)
+						s -= A[i][j] * xNew[j]; // new values for j < i, old values for j > i
+				const xt = s / A[i][i];         // Gauss-Seidel value
+				gsVal.push(xt);
+				xNew[i] = (1 - w) * xNew[i] + w * xt;
+				sub.push(xNew.slice());
+			}
+			return { x: xNew, sub: sub, gsVal: gsVal };
+		}
+
 		runMethod(stepFct)
 		{
 			const A = this.system.A, b = this.system.b;
 			let X = [this.x0.slice()];
 			let sub = [[]];
+			let gsVal = [[]];
 			let res = [residualNorm(A, b, this.x0)];
 			for (let k = 1; k <= MAX_ITERATIONS; k++)
 			{
 				const r = stepFct.call(this, A, b, X[k - 1]);
 				X.push(r.x);
 				sub.push(r.sub);
+				gsVal.push(r.gsVal || []);
 				res.push(residualNorm(A, b, r.x));
 			}
-			return { X: X, sub: sub, res: res };
+			return { X: X, sub: sub, gsVal: gsVal, res: res };
+		}
+
+		// iteration matrix of SOR: M = (D + w L)^{-1} ((1-w) D - w U), computed column by column
+		// with forward substitution (w = 1 gives the Gauss-Seidel matrix -(D+L)^{-1} U)
+		sorMatrix(A, w)
+		{
+			const n = A.length;
+			let M = A.map(row => new Array(n).fill(0));
+			for (let c = 0; c < n; c++)
+			{
+				for (let i = 0; i < n; i++)
+				{
+					let s = (i == c) ? (1 - w) * A[i][i] : ((c > i) ? -w * A[i][c] : 0);
+					for (let j = 0; j < i; j++)
+						s -= w * A[i][j] * M[j][c];
+					M[i][c] = s / A[i][i];
+				}
+			}
+			return M;
 		}
 
 		// ---------- matrix properties ----------
@@ -339,22 +406,22 @@
 
 			// iteration matrices
 			let MJ = A.map((row, i) => row.map((a, j) => i == j ? 0 : -a / A[i][i]));
-			// M_GS = -(D+L)^{-1} U, computed column by column with forward substitution
-			let MGS = A.map(row => new Array(n).fill(0));
-			for (let c = 0; c < n; c++)
+			let MGS = this.sorMatrix(A, 1.0);
+
+			// spectral radius of SOR for a range of omega values to find the best omega numerically
+			let omegas = [], rhoSOR = [];
+			for (let w = 0.02; w < 1.99; w += 0.02)
 			{
-				for (let i = 0; i < n; i++)
-				{
-					let s = (c > i) ? A[i][c] : 0;   // column c of U
-					for (let j = 0; j < i; j++)
-						s -= A[i][j] * MGS[j][c];
-					MGS[i][c] = s / A[i][i];
-				}
+				omegas.push(w);
+				rhoSOR.push(spectralRadius(this.sorMatrix(A, w)));
 			}
-			MGS = MGS.map(row => row.map(a => -a));
+			let best = 0;
+			for (let i = 1; i < rhoSOR.length; i++)
+				if (rhoSOR[i] < rhoSOR[best]) best = i;
 
 			return { dominance: strict ? "strictly" : (weak ? "weakly" : "no"),
-					 spd: spd, rhoJ: spectralRadius(MJ), rhoGS: spectralRadius(MGS) };
+					 spd: spd, rhoJ: spectralRadius(MJ), rhoGS: spectralRadius(MGS),
+					 omegas: omegas, rhoSOR: rhoSOR, omegaOpt: omegas[best], rhoOpt: rhoSOR[best] };
 		}
 
 		// ---------- number formatting ----------
@@ -389,11 +456,15 @@
 		}
 
 		// formula for component i of the iteration step x^(k-1) -> x^(k)
-		componentFormula(i, xOld, xNew, k, gs)
+		componentFormula(i, xOld, xNew, k, method, gsVal)
 		{
 			const A = this.system.A, b = this.system.b, n = A.length;
 			const I = i + 1;
-			let sym = `x_{${I}}^{(${k})} = \\frac{1}{a_{${I}${I}}}\\left(b_{${I}}`;
+			const gs = method != "Jacobi";
+			const sor = method == "SOR";
+			// for SOR the formula first yields the Gauss-Seidel value x~_i
+			const lhs = sor ? `\\tilde{x}_{${I}}` : `x_{${I}}^{(${k})}`;
+			let sym = `${lhs} = \\frac{1}{a_{${I}${I}}}\\left(b_{${I}}`;
 			let num = `\\frac{1}{${this.fmt(A[i][i])}}\\left(${this.fmt(b[i])}`;
 			for (let j = 0; j < n; j++)
 			{
@@ -406,7 +477,15 @@
 			}
 			sym += "\\right)";
 			num += "\\right)";
-			return `<div>$$${sym} = ${num} = ${this.colored("\\mathbf{" + this.fmt(xNew[i]) + "}", NEW_COLOR)}$$</div>`;
+			if (!sor)
+				return `<div>$$${sym} = ${num} = ${this.colored("\\mathbf{" + this.fmt(xNew[i]) + "}", NEW_COLOR)}$$</div>`;
+
+			// SOR: relaxation of the Gauss-Seidel value
+			const w = this.omega;
+			return `<div>$$${sym} = ${num} = ${this.fmt(gsVal[i])}$$` +
+				`$$x_{${I}}^{(${k})} = (1-\\omega)\\,` + this.colored(`x_{${I}}^{(${k - 1})}`, OLD_COLOR) + ` + \\omega\\,\\tilde{x}_{${I}} = ` +
+				`${this.fmtFactor(1 - w)}\\cdot ` + this.colored(this.fmtFactor(xOld[i]), OLD_COLOR) +
+				` + ${this.fmt(w)}\\cdot ${this.fmtFactor(gsVal[i])} = ${this.colored("\\mathbf{" + this.fmt(xNew[i]) + "}", NEW_COLOR)}$$</div>`;
 		}
 
 		// ---------- control ----------
@@ -421,9 +500,26 @@
 
 			this.xStar = solveDirect(this.system.A, this.system.b);
 			this.props = this.analyze(this.system.A);
-			this.jacobi = this.runMethod(this.jacobiStep);
-			this.gs = this.runMethod(this.gaussSeidelStep);
+			this.runs = {
+				"Jacobi": this.runMethod(this.jacobiStep),
+				"Gauss-Seidel": this.runMethod(this.gaussSeidelStep)
+			};
+			this.computeSOR();
 			this.setStep(0);
+		}
+
+		computeSOR()
+		{
+			this.omega = parseFloat(document.getElementById('omega').value);
+			document.getElementById('omegaText').value = this.omega.toFixed(2);
+			this.runs["SOR"] = this.runMethod(this.sorStep);
+			this.rhoSOR = spectralRadius(this.sorMatrix(this.system.A, this.omega));
+		}
+
+		updateOmega()
+		{
+			this.computeSOR();
+			this.render();
 		}
 
 		setStep(s)
@@ -436,14 +532,14 @@
 
 		render()
 		{
-			const gs = document.getElementById('method').value == "Gauss-Seidel";
-			this.plotPath(gs);
-			this.plotConvergence(gs);
-			this.renderDisplay(gs);
+			const method = document.getElementById('method').value;
+			this.plotPath(method);
+			this.plotConvergence(method);
+			this.renderDisplay(method);
 		}
 
 		// ---------- plots ----------
-		plotPath(gs)
+		plotPath(method)
 		{
 			const div = document.getElementById('pathPlot');
 			const A = this.system.A, b = this.system.b;
@@ -455,7 +551,7 @@
 			}
 			div.style.display = "";
 
-			const run = gs ? this.gs : this.jacobi;
+			const run = this.runs[method];
 			const k = this.step;
 
 			// visible region around initial guess and solution
@@ -483,7 +579,7 @@
 						 name: `equation ${i + 1}: ${A[i][0]}x₁ + ${A[i][1]}x₂ = ${b[i]}` };
 			};
 
-			// path of the iterates (including Gauss-Seidel sub-steps)
+			// path of the iterates (including Gauss-Seidel / SOR sub-steps)
 			let px = [this.x0[0]], py = [this.x0[1]];
 			for (let it = 1; it < k; it++)
 				for (const v of run.sub[it]) { px.push(v[0]); py.push(v[1]); }
@@ -497,13 +593,29 @@
 				const xOld = run.X[k - 1];
 				let cx_ = [xOld[0]], cy_ = [xOld[1]];
 				for (const v of run.sub[k]) { cx_.push(v[0]); cy_.push(v[1]); }
-				if (!gs)
+				if (method == "Jacobi")
 				{
 					// Jacobi: x1 solves equation 1 with old x2, x2 solves equation 2 with old x1
 					const xNew = run.X[k];
 					data.push({ x: [xOld[0], xNew[0], null, xOld[0], xOld[0]], y: [xOld[1], xOld[1], null, xOld[1], xNew[1]],
 								mode: "lines", line: { color: "#c0392b", width: 1.5, dash: "dot" },
 								name: "Jacobi: each equation solved with old values" });
+				}
+				if (method == "SOR")
+				{
+					// SOR: the Gauss-Seidel point of each sub-step lies on the line of the equation,
+					// SOR moves omega times as far
+					let tx = [], ty = [];
+					let prev = xOld;
+					for (let i = 0; i < 2; i++)
+					{
+						let t = prev.slice();
+						t[i] = run.gsVal[k][i];
+						tx.push(t[0]); ty.push(t[1]);
+						prev = run.sub[k][i];
+					}
+					data.push({ x: tx, y: ty, mode: "markers", marker: { size: 10, symbol: "circle-open", color: "#c0392b", line: { width: 2 } },
+								name: "Gauss-Seidel points (ω = 1)" });
 				}
 				data.push({ x: cx_, y: cy_, mode: "lines+markers", line: { color: "#c0392b", width: 3 }, marker: { size: 8 },
 							name: `current iteration ${k - 1} → ${k}` });
@@ -515,7 +627,7 @@
 						line: { color: "#000000", width: 1 } }, name: "solution x*" });
 
 			const layout = {
-				title: (gs ? "Gauss-Seidel" : "Jacobi") + " iterates",
+				title: method + (method == "SOR" ? ` (ω = ${this.omega.toFixed(2)})` : "") + " iterates",
 				autosize: true,
 				margin: { l: 45, r: 15, t: 40, b: 40 },
 				xaxis: { range: xr, title: "x₁" },
@@ -526,18 +638,20 @@
 			Plotly.newPlot(div, data, layout, { responsive: true });
 		}
 
-		plotConvergence(gs)
+		plotConvergence(method)
 		{
 			const clamp = r => Math.min(Math.max(r, 1e-16), 1e100);
 			const it = Array.from({ length: MAX_ITERATIONS + 1 }, (_, i) => i);
-			const data = [
-				{ x: it, y: this.jacobi.res.map(clamp), mode: "lines", name: "Jacobi",
-				  line: { color: "#2471a3", width: gs ? 1.5 : 3, dash: gs ? "dash" : "solid" } },
-				{ x: it, y: this.gs.res.map(clamp), mode: "lines", name: "Gauss-Seidel",
-				  line: { color: "#c0392b", width: gs ? 3 : 1.5, dash: gs ? "solid" : "dash" } },
-				{ x: [this.step], y: [clamp((gs ? this.gs : this.jacobi).res[this.step])], mode: "markers",
-				  marker: { size: 10, color: "#000000" }, name: "current iteration" }
-			];
+			let data = [];
+			for (const m of ["Jacobi", "Gauss-Seidel", "SOR"])
+			{
+				const active = m == method;
+				data.push({ x: it, y: this.runs[m].res.map(clamp), mode: "lines",
+							name: m == "SOR" ? `SOR (ω = ${this.omega.toFixed(2)})` : m,
+							line: { color: METHOD_COLORS[m], width: active ? 3 : 1.5, dash: active ? "solid" : "dash" } });
+			}
+			data.push({ x: [this.step], y: [clamp(this.runs[method].res[this.step])], mode: "markers",
+						marker: { size: 10, color: "#000000" }, name: "current iteration" });
 			const layout = {
 				title: "Convergence",
 				autosize: true,
@@ -552,11 +666,12 @@
 			Plotly.newPlot('convPlot', data, layout, { responsive: true });
 		}
 
+
 		// ---------- step details ----------
-		renderDisplay(gs)
+		renderDisplay(method)
 		{
 			const A = this.system.A, b = this.system.b, n = A.length;
-			const run = gs ? this.gs : this.jacobi;
+			const run = this.runs[method];
 			const k = this.step;
 			const p = this.props;
 
@@ -566,8 +681,10 @@
 			const conv = rho => rho < 1 ? "converges" : "diverges";
 			document.getElementById('properties').innerHTML =
 				`Diagonally dominant: <b>${p.dominance}</b> &nbsp;·&nbsp; symmetric positive definite: <b>${p.spd ? "yes" : "no"}</b><br>` +
-				`Spectral radius of the iteration matrix: Jacobi $\\rho(M_J) \\approx ${p.rhoJ.toFixed(3)}$ (${conv(p.rhoJ)}), ` +
-				`Gauss-Seidel $\\rho(M_{GS}) \\approx ${p.rhoGS.toFixed(3)}$ (${conv(p.rhoGS)})`;
+				`Spectral radius $\\rho(M) = \\max_i |\\lambda_i|$ (largest absolute eigenvalue) of the iteration matrix: Jacobi $\\rho(M_J) \\approx ${p.rhoJ.toFixed(3)}$ (${conv(p.rhoJ)}), ` +
+				`Gauss-Seidel $\\rho(M_{GS}) \\approx ${p.rhoGS.toFixed(3)}$ (${conv(p.rhoGS)}), ` +
+				`SOR with $\\omega = ${this.omega.toFixed(2)}$: $\\rho(M_{SOR}) \\approx ${this.rhoSOR.toFixed(3)}$ (${conv(this.rhoSOR)})<br>` +
+				`Best relaxation parameter (numerically): $\\omega \\approx ${p.omegaOpt.toFixed(2)}$ with $\\rho(M_{SOR}) \\approx ${p.rhoOpt.toFixed(3)}$`;
 
 			let title, vectors = "", desc = "", formulas = "";
 			if (k == 0)
@@ -581,8 +698,10 @@
 						  `<div class="matrix-row"><div>$$A = \\underbrace{${this.latexMatrix(Lm)}}_{L} + \\underbrace{${this.latexMatrix(Dm)}}_{D} + \\underbrace{${this.latexMatrix(Um)}}_{U}$$</div></div>`;
 				desc = "The iteration starts with the initial guess $\\mathbf{x}^{(0)}$. The exact solution $\\mathbf{x}^*$ is only shown for comparison. " +
 					   "The matrix is split into its strictly lower triangular part $L$, its diagonal $D$ and its strictly upper triangular part $U$. " +
-					   (gs ? "Gauss-Seidel iteration: $\\mathbf{x}^{(k+1)} = (D+L)^{-1}\\left(\\mathbf{b} - U\\mathbf{x}^{(k)}\\right)$."
-						   : "Jacobi iteration: $\\mathbf{x}^{(k+1)} = D^{-1}\\left(\\mathbf{b} - (L+U)\\mathbf{x}^{(k)}\\right)$.") +
+					   ({ "Jacobi": "Jacobi iteration: $\\mathbf{x}^{(k+1)} = D^{-1}\\left(\\mathbf{b} - (L+U)\\mathbf{x}^{(k)}\\right)$.",
+						  "Gauss-Seidel": "Gauss-Seidel iteration: $\\mathbf{x}^{(k+1)} = (D+L)^{-1}\\left(\\mathbf{b} - U\\mathbf{x}^{(k)}\\right)$.",
+						  "SOR": "SOR iteration: $\\mathbf{x}^{(k+1)} = (D+\\omega L)^{-1}\\left(\\omega\\mathbf{b} - (\\omega U + (\\omega-1)D)\\,\\mathbf{x}^{(k)}\\right)$ " +
+								 `with $\\omega = ${this.omega.toFixed(2)}$.` })[method] +
 					   " Press <i>Next</i> to perform the first iteration.";
 			}
 			else
@@ -594,14 +713,20 @@
 						  `<div>$$\\longrightarrow$$</div>` +
 						  `<div>$$\\mathbf{x}^{(${k})} = ${this.latexVector(xNew, NEW_COLOR)}$$</div>` +
 						  `<div>$$\\mathbf{x}^* = ${this.latexVector(this.xStar)}$$</div></div>`;
-				if (gs)
+				if (method == "Gauss-Seidel")
 					desc = "Gauss-Seidel: each equation $i$ is solved for $x_i$, one after the other. " +
 						   "The components $x_j$ with $j \\lt i$ were already updated in this iteration and their <b>new</b> values are used immediately:";
+				else if (method == "SOR")
+					desc = `SOR with $\\omega = ${this.omega.toFixed(2)}$: for each component, first the Gauss-Seidel value $\\tilde{x}_i$ is computed ` +
+						   "(using the <b>new</b> values of the components $j \\lt i$). Then the step from the old value towards $\\tilde{x}_i$ is scaled with $\\omega$: " +
+						   "$x_i^{\\text{new}} = x_i^{\\text{old}} + \\omega\\,(\\tilde{x}_i - x_i^{\\text{old}})$. " +
+						   (this.omega > 1 ? "Since $\\omega > 1$, the step is enlarged (over-relaxation):"
+							: (this.omega < 1 ? "Since $\\omega \\lt 1$, the step is shortened (under-relaxation):" : "For $\\omega = 1$ this is exactly Gauss-Seidel:"));
 				else
 					desc = "Jacobi: each equation $i$ is solved for $x_i$ using only the <b>old</b> values of all other components. " +
 						   "Therefore, all components can be computed independently (in parallel):";
 				for (let i = 0; i < n; i++)
-					formulas += this.componentFormula(i, xOld, xNew, k, gs);
+					formulas += this.componentFormula(i, xOld, xNew, k, method, run.gsVal[k]);
 			}
 
 			const x = run.X[k];
