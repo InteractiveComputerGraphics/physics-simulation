@@ -1,0 +1,637 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		TeX: { extensions: ["AMSmath.js", "AMSsymbols.js", "color.js", "bbox.js"] },
+		"HTML-CSS": { fonts: ["TeX"] },
+		messageStyle: "none"
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>LU decomposition with pivoting</title>
+	<style>
+		#display { background-color: #EEEEEE; padding: 12px 16px; min-height: 420px; }
+		#stepTitle { margin: 4px 0 8px 0; }
+		.matrix-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 32px; }
+		.matrix-row > div { overflow-x: auto; max-width: 100%; }
+		.state-label { font-weight: bold; font-size: 0.9em; margin: 6px 0 0 0; color: #555555; }
+		.before { border: 1px dashed #999999; border-radius: 6px; padding: 0 8px; }
+		.arrow { text-align: center; font-size: 1.4em; color: #777777; line-height: 1.2; }
+		#stepDesc { margin-top: 8px; line-height: 1.5; }
+		#stepDesc ul { margin: 4px 0; }
+		.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.9em; margin-top: 10px; }
+		.legend span b { display: inline-block; width: 12px; height: 12px; margin-right: 5px; vertical-align: middle; }
+		.check { font-size: 0.95em; margin-top: 6px; }
+		.btn-row button { margin-right: 6px; padding: 3px 10px; }
+	</style>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>LU decomposition with pivoting</h1>
+</header>
+
+<main>
+	<!-- Visualization panel -->
+	<div class="card sim-panel">
+		<div class="sim-canvas-wrap">
+			<div id="display">
+				<div id="system"></div>
+				<h3 id="stepTitle"></h3>
+				<div id="matrices"></div>
+				<div id="stepDesc"></div>
+				<div id="check" class="check"></div>
+				<div class="legend">
+					<span><b style="background:#c0392b"></b>pivot element</span>
+					<span><b style="background:#d68910"></b>pivot candidates / swapped rows</span>
+					<span><b style="background:#8e44ad"></b>entries to be eliminated</span>
+					<span><b style="background:#1e8449"></b>new entries in $L$ (multipliers)</span>
+					<span><b style="background:#2471a3"></b>updated entries in $U$</span>
+					<span><b style="background:#aaaaaa"></b>eliminated entries</span>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div class="controls-panel" style="width: 100%;align:center;margin-left:auto;margin-right:auto">
+		<h3>Controls</h3>
+		<div class="controls-grid" style="width: 400px;align:left">
+			<label for="step">Step</label>
+			<span class="stat-value"><input type="text" id="textInput" value="0" readonly></span>
+
+			<label></label>
+			<input oninput="viz.setStep(parseInt(this.value))" id="step" value="0" type="range" min="0" max="1" step="1">
+
+			<label></label>
+			<span class="btn-row">
+				<button onclick="viz.setStep(viz.step-1)">&#9664; Previous</button>
+				<button onclick="viz.setStep(viz.step+1)">Next &#9654;</button>
+			</span>
+
+			<label for="matrix">Matrix</label>
+			<select onchange="viz.reset()" id="matrix" size="1">
+				<option selected="selected">3x3 example</option>
+				<option>3x3 zero pivot</option>
+				<option>2x2 tiny pivot</option>
+				<option>4x4 example</option>
+				<option>4x4 random</option>
+			</select>
+
+			<label for="pivoting">Pivoting</label>
+			<input onchange="viz.reset()" id="pivoting" type="checkbox" checked>
+
+			<label for="fractions">Show fractions</label>
+			<input onchange="viz.render()" id="fractions" type="checkbox" checked>
+		</div>
+	</div>
+
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>LU decomposition</h2>
+
+		<p>We want to solve the linear system $A\mathbf{x} = \mathbf{b}$ with a regular matrix $A \in \mathbb{R}^{n\times n}$.
+		The idea of the LU decomposition is to factorize the matrix into a lower triangular matrix $L$ with ones on the diagonal and an upper triangular matrix $U$:</p>
+		$$\begin{equation*}
+		PA = LU.
+		\end{equation*}$$
+		<p>$P$ is a permutation matrix which records the row exchanges performed by pivoting. Since $P^{-1} = P^T$, it is cheap to store (as a vector of row indices) and to apply.</p>
+
+		<h3>Algorithm</h3>
+		<p>We start with $P = I$, $L = I$ and $U = A$. Then for each column $k = 1, \dots, n-1$ two steps are performed:</p>
+		<ol>
+			<li><b>Pivot step:</b> Find the row $p \geq k$ with the largest absolute value $|u_{pk}|$ in column $k$ (partial pivoting).
+			Swap the rows $k$ and $p$ in $U$ and in $P$. Additionally, the multipliers which were already computed in $L$ (columns $1,\dots,k-1$) are swapped, since they belong to the rows that are exchanged.</li>
+			<li><b>Elimination step:</b> For each row $i > k$ compute the multiplier
+			$$l_{ik} = \frac{u_{ik}}{u_{kk}},$$
+			store it in $L$ and subtract the $l_{ik}$-fold of the pivot row from row $i$ of $U$:
+			$$u_{ij} \leftarrow u_{ij} - l_{ik}\, u_{kj}, \qquad j = k, \dots, n.$$
+			This creates zeros below the pivot $u_{kk}$.</li>
+		</ol>
+		<p>After every single step the invariant $PA = LU$ holds (see the check below the matrices). After the last column $U$ is upper triangular and the decomposition is complete.
+		The computational effort is $\mathcal{O}(n^3)$.</p>
+
+		<h3>Why pivoting?</h3>
+		<p>Without pivoting the algorithm fails if a pivot $u_{kk}$ becomes zero (try the example "3x3 zero pivot" with pivoting disabled), although the matrix is regular.
+		Even if the pivot is only small, the multipliers $l_{ik}$ become very large, which leads to large rounding errors (example "2x2 tiny pivot").
+		Choosing the largest element as pivot guarantees $|l_{ik}| \leq 1$, which makes the method numerically stable in practice.</p>
+
+		<h3>Solving the system</h3>
+		<p>With $PA = LU$ and $P^{-1} = P^T$ we get $A = P^T L U$. Hence, the system $A\mathbf{x} = \mathbf{b}$ becomes
+		$P^T \underbrace{L \underbrace{U\mathbf{x}}_{\mathbf{y}}}_{\mathbf{z}} = \mathbf{b}$, which is solved in three steps:</p>
+		<ol>
+			<li><b>Permutation:</b> solve $P^T\mathbf{z} = \mathbf{b}$: &nbsp; $\mathbf{z} = P\mathbf{b}$ (just a reordering of the entries of $\mathbf{b}$)</li>
+			<li><b>Forward substitution:</b> solve $L\mathbf{y} = \mathbf{z}$: &nbsp; $y_i = z_i - \sum_{j \lt i} l_{ij}\, y_j$</li>
+			<li><b>Backward substitution:</b> solve $U\mathbf{x} = \mathbf{y}$: &nbsp; $x_i = \frac{1}{u_{ii}}\left(y_i - \sum_{j>i} u_{ij}\, x_j\right)$, starting with $i = n$</li>
+		</ol>
+		<p>These steps only require $\mathcal{O}(n^2)$ operations. Hence, if the system has to be solved for many right-hand sides $\mathbf{b}$ with the same matrix $A$, the expensive decomposition is computed only once.</p>
+	</div>
+
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	const COLORS = {
+		pivot:   "#c0392b",
+		swap:    "#d68910",
+		cand:    "#d68910",
+		elim:    "#8e44ad",
+		newL:    "#1e8449",
+		changed: "#2471a3",
+		zeroed:  "#aaaaaa"
+	};
+
+	// ---------- small linear algebra helpers ----------
+	function identity(n)
+	{
+		let M = [];
+		for (let i = 0; i < n; i++)
+		{
+			M.push(new Array(n).fill(0));
+			M[i][i] = 1;
+		}
+		return M;
+	}
+
+	function copyMatrix(M) { return M.map(row => row.slice()); }
+
+	function matMul(A, B)
+	{
+		let n = A.length, m = B[0].length, K = B.length;
+		let C = [];
+		for (let i = 0; i < n; i++)
+		{
+			C.push(new Array(m).fill(0));
+			for (let j = 0; j < m; j++)
+				for (let k = 0; k < K; k++)
+					C[i][j] += A[i][k] * B[k][j];
+		}
+		return C;
+	}
+
+	function matVec(A, x) { return A.map(row => row.reduce((s, a, j) => s + a * x[j], 0)); }
+
+	function maxDiff(A, B)
+	{
+		let d = 0;
+		for (let i = 0; i < A.length; i++)
+			for (let j = 0; j < A[i].length; j++)
+				d = Math.max(d, Math.abs(A[i][j] - B[i][j]));
+		return d;
+	}
+
+	class LUVisualization
+	{
+		constructor()
+		{
+			this.step = 0;
+			this.steps = [];
+		}
+
+		// ---------- example matrices ----------
+		getSystem(name)
+		{
+			if (name == "3x3 example")
+				return { A: [[2, 1, 1], [4, -6, 0], [-2, 7, 2]], b: [5, -2, 9] };
+			if (name == "3x3 zero pivot")
+				return { A: [[0, 1, 2], [1, 2, 3], [3, 1, 1]], b: [0, 2, 4] };
+			if (name == "2x2 tiny pivot")
+				return { A: [[0.001, 1], [1, 1]], b: [1, 2] };
+			if (name == "4x4 example")
+				return { A: [[1, 2, 0, 3], [2, -1, 4, 1], [4, 2, -2, 0], [-3, 1, 1, 2]], b: [2, 12, -2, 0] };
+
+			// random 4x4 matrix with integer entries and integer solution
+			const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+			while (true)
+			{
+				let A = [];
+				for (let i = 0; i < 4; i++)
+				{
+					A.push([]);
+					for (let j = 0; j < 4; j++)
+						A[i].push(rnd(-5, 5));
+				}
+				// reject (nearly) singular matrices
+				let test = this.decompose(A, [0, 0, 0, 0], true);
+				if (!test.singular)
+				{
+					let x = [rnd(-3, 3), rnd(-3, 3), rnd(-3, 3), rnd(-3, 3)];
+					return { A: A, b: matVec(A, x) };
+				}
+			}
+		}
+
+		// ---------- LU decomposition, recording every step ----------
+		decompose(A, b, pivoting)
+		{
+			const n = A.length;
+			const eps = 1e-12;
+			let P = identity(n);
+			let L = identity(n);
+			let U = copyMatrix(A);
+			let steps = [];
+			let singular = false;
+
+			// hl: highlights of the result, hlBefore: highlights of the previous state
+			// (shows what the step is going to act on)
+			const snapshot = (kind, title, desc, hl, hlBefore) =>
+				steps.push({ kind: kind, title: title, desc: desc, hl: hl,
+							 hlBefore: hlBefore || { P: {}, L: {}, U: {} },
+							 P: copyMatrix(P), L: copyMatrix(L), U: copyMatrix(U) });
+
+			snapshot("matrices", "Initialization",
+				"We start with $P = I$, $L = I$ and $U = A$. Obviously $PA = LU$ holds.",
+				{ P: {}, L: {}, U: {} });
+
+			for (let k = 0; k < n - 1; k++)
+			{
+				const K = k + 1; // 1-based index for the text
+
+				// ----- pivot step -----
+				if (pivoting)
+				{
+					let p = k;
+					for (let i = k + 1; i < n; i++)
+						if (Math.abs(U[i][k]) > Math.abs(U[p][k]))
+							p = i;
+
+					let hlBefore = { P: {}, L: {}, U: {} };
+					for (let i = k; i < n; i++)
+						hlBefore.U[i + "," + k] = "cand";
+					hlBefore.U[p + "," + k] = "pivot";
+					if (p != k)
+					{
+						for (let j = 0; j < n; j++)
+						{
+							hlBefore.P[k + "," + j] = "swap"; hlBefore.P[p + "," + j] = "swap";
+						}
+						for (let j = 0; j < k; j++)
+						{
+							hlBefore.L[k + "," + j] = "swap"; hlBefore.L[p + "," + j] = "swap";
+						}
+					}
+
+					let hl = { P: {}, L: {}, U: {} };
+					let desc = `Search the element with the largest absolute value in column ${K} of $U$ on or below the diagonal ` +
+						`(candidates: rows ${K} to ${n}). `;
+
+					if (p != k)
+					{
+						[U[k], U[p]] = [U[p], U[k]];
+						[P[k], P[p]] = [P[p], P[k]];
+						for (let j = 0; j < k; j++)
+							[L[k][j], L[p][j]] = [L[p][j], L[k][j]];
+
+						for (let j = 0; j < n; j++)
+						{
+							hl.P[k + "," + j] = "swap"; hl.P[p + "," + j] = "swap";
+							hl.U[k + "," + j] = "swap"; hl.U[p + "," + j] = "swap";
+						}
+						for (let j = 0; j < k; j++)
+						{
+							hl.L[k + "," + j] = "swap"; hl.L[p + "," + j] = "swap";
+						}
+						desc += `The largest value is found in row ${p + 1}. Therefore, rows ${K} and ${p + 1} are swapped:<ul>` +
+							`<li>in $U$ (the equations are reordered),</li>` +
+							`<li>in $P$ (to remember the permutation),</li>` +
+							(k > 0 ? `<li>in the already computed columns 1${k > 1 ? " to " + k : ""} of $L$ (the multipliers belong to the swapped rows; the diagonal of $L$ is not touched).</li>`
+								   : `<li>in $L$ nothing has to be swapped yet since no multipliers were computed so far.</li>`) +
+							`</ul>`;
+					}
+					else
+					{
+						for (let i = k; i < n; i++)
+							hl.U[i + "," + k] = "cand";
+						desc += `The largest value is already in row ${K}, so no rows have to be swapped.`;
+					}
+					hl.U[k + "," + k] = "pivot";
+					desc += ` The pivot element is $u_{${K}${K}} = ${this.fmt(U[k][k])}$.`;
+
+					snapshot("matrices", `Column ${K}: pivot step`, desc, hl, hlBefore);
+				}
+
+				// ----- elimination step -----
+				if (Math.abs(U[k][k]) < eps)
+				{
+					singular = true;
+					const hlZero = { P: {}, L: {}, U: { [k + "," + k]: "pivot" } };
+					snapshot("matrices", `Column ${K}: breakdown`,
+						`The pivot $u_{${K}${K}}$ is zero. ` +
+						(pivoting ? "All candidates in this column are zero, so the matrix is singular."
+								  : "Without pivoting the elimination cannot be continued (division by zero), although the matrix may be regular. Enable pivoting to solve this problem."),
+						hlZero, hlZero);
+					break;
+				}
+
+				let hlBefore = { P: {}, L: {}, U: {} };
+				hlBefore.U[k + "," + k] = "pivot";
+				for (let i = k + 1; i < n; i++)
+					hlBefore.U[i + "," + k] = "elim";
+
+				let hl = { P: {}, L: {}, U: {} };
+				hl.U[k + "," + k] = "pivot";
+				let items = "";
+				for (let i = k + 1; i < n; i++)
+				{
+					const l = U[i][k] / U[k][k];
+					items += `<li>$l_{${i + 1}${K}} = \\frac{u_{${i + 1}${K}}}{u_{${K}${K}}} = \\frac{${this.fmt(U[i][k])}}{${this.fmt(U[k][k])}} = ${this.fmt(l)}$, &nbsp; ` +
+						`$\\text{row}_{${i + 1}}(U) \\leftarrow \\text{row}_{${i + 1}}(U) - ${this.fmtFactor(l)}\\,\\text{row}_{${K}}(U)$</li>`;
+					L[i][k] = l;
+					hl.L[i + "," + k] = "newL";
+					for (let j = k; j < n; j++)
+						U[i][j] -= l * U[k][j];
+					U[i][k] = 0; // exact zero (avoid rounding noise)
+					hl.U[i + "," + k] = "zeroed";
+					for (let j = k + 1; j < n; j++)
+						hl.U[i + "," + j] = "changed";
+				}
+				snapshot("matrices", `Column ${K}: elimination step`,
+					`Eliminate the entries below the pivot $u_{${K}${K}}$. For each row $i > ${K}$ the multiplier $l_{i${K}} = u_{i${K}}/u_{${K}${K}}$ is stored in column ${K} of $L$ ` +
+					`and the $l_{i${K}}$-fold of row ${K} is subtracted from row $i$ of $U$:<ul>${items}</ul>`, hl, hlBefore);
+			}
+
+			if (!singular && Math.abs(U[n - 1][n - 1]) < eps)
+			{
+				singular = true;
+				const hlZero = { P: {}, L: {}, U: { [(n - 1) + "," + (n - 1)]: "pivot" } };
+				snapshot("matrices", "Breakdown", `The last diagonal element $u_{${n}${n}}$ is zero, so the matrix is singular.`,
+					hlZero, hlZero);
+			}
+
+			if (!singular)
+			{
+				let hl = { P: {}, L: {}, U: {} };
+				for (let i = 0; i < n; i++)
+					hl.U[i + "," + i] = "pivot";
+				snapshot("matrices", "Decomposition complete",
+					"$U$ is now an upper triangular matrix and $L$ a lower triangular matrix with ones on the diagonal. " +
+					"The decomposition $PA = LU$ is complete. The pivots are the diagonal elements of $U$, " +
+					"so we also get $\\det(A) = \\det(P)^{-1} \\prod_i u_{ii} = " + this.fmt(this.det(P, U)) + "$.", hl);
+
+				// ----- permutation: P^T z = b  =>  z = P b -----
+				const perm = P.map(row => row.indexOf(1));
+				const z = matVec(P, b);
+				let items = "";
+				for (let i = 0; i < n; i++)
+					items += `<li>$z_{${i + 1}} = b_{${perm[i] + 1}} = ${this.fmt(z[i])}$</li>`;
+				steps.push({ kind: "permute", title: "Permutation: $P^T\\mathbf{z} = \\mathbf{b}$",
+					desc: "Since $PA = LU$ and $P^{-1} = P^T$, we have $A = P^T L U$. Therefore, the system $A\\mathbf{x} = \\mathbf{b}$ can be written as " +
+						  "$P^T \\underbrace{L \\underbrace{U\\mathbf{x}}_{\\mathbf{y}}}_{\\mathbf{z}} = \\mathbf{b}$ and is solved in three steps. " +
+						  "First we solve $P^T\\mathbf{z} = \\mathbf{b}$. Since $P$ is orthogonal, the solution is simply $\\mathbf{z} = P\\mathbf{b}$, " +
+						  "i.e. the entries of $\\mathbf{b}$ are reordered in the same way as the rows of $A$ were swapped during the decomposition:<ul>" + items + "</ul>",
+					P: P, L: L, U: U, z: z });
+
+				// ----- forward substitution: L y = z -----
+				const Pb = z;
+				let y = new Array(n).fill(0);
+				items = "";
+				for (let i = 0; i < n; i++)
+				{
+					let s = Pb[i];
+					let terms = "";
+					for (let j = 0; j < i; j++)
+					{
+						s -= L[i][j] * y[j];
+						terms += ` - ${this.fmtFactor(L[i][j])}\\cdot ${this.fmtFactor(y[j])}`;
+					}
+					y[i] = s;
+					items += `<li>$y_{${i + 1}} = ${this.fmt(Pb[i])}${terms} = ${this.fmt(y[i])}$</li>`;
+				}
+				steps.push({ kind: "forward", title: "Forward substitution: $L\\mathbf{y} = \\mathbf{z}$",
+					desc: "Next, $L\\mathbf{y} = \\mathbf{z}$ is solved from top to bottom. " +
+						  "Since the diagonal of $L$ is one, no division is required:<ul>" + items + "</ul>",
+					P: P, L: L, U: U, z: z, y: y });
+
+				// ----- backward substitution -----
+				let x = new Array(n).fill(0);
+				items = "";
+				for (let i = n - 1; i >= 0; i--)
+				{
+					let s = y[i];
+					let terms = "";
+					for (let j = i + 1; j < n; j++)
+					{
+						s -= U[i][j] * x[j];
+						terms += ` - ${this.fmtFactor(U[i][j])}\\cdot ${this.fmtFactor(x[j])}`;
+					}
+					x[i] = s / U[i][i];
+					items += `<li>$x_{${i + 1}} = \\frac{${this.fmt(y[i])}${terms}}{${this.fmt(U[i][i])}} = ${this.fmt(x[i])}$</li>`;
+				}
+				steps.push({ kind: "backward", title: "Backward substitution: $U\\mathbf{x} = \\mathbf{y}$",
+					desc: "Finally, $U\\mathbf{x} = \\mathbf{y}$ is solved from bottom to top:<ul>" + items + "</ul>",
+					P: P, L: L, U: U, z: z, y: y, x: x });
+			}
+
+			return { steps: steps, singular: singular };
+		}
+
+		det(P, U)
+		{
+			// det(P) = sign of the permutation
+			const n = P.length;
+			let perm = P.map(row => row.indexOf(1));
+			let sign = 1;
+			let visited = new Array(n).fill(false);
+			for (let i = 0; i < n; i++)
+			{
+				if (visited[i]) continue;
+				let len = 0, j = i;
+				while (!visited[j]) { visited[j] = true; j = perm[j]; len++; }
+				if (len % 2 == 0) sign = -sign;
+			}
+			let d = sign;
+			for (let i = 0; i < n; i++)
+				d *= U[i][i];
+			return d;
+		}
+
+		// ---------- number formatting ----------
+		toFraction(v)
+		{
+			const sign = v < 0 ? -1 : 1;
+			const x = Math.abs(v);
+			let h0 = 0, h1 = 1, k0 = 1, k1 = 0, f = x;
+			for (let it = 0; it < 25; it++)
+			{
+				const a = Math.floor(f);
+				const h2 = a * h1 + h0, k2 = a * k1 + k0;
+				if (k2 > 10000) break;
+				h0 = h1; h1 = h2; k0 = k1; k1 = k2;
+				if (Math.abs(x - h1 / k1) < 1e-9 * Math.max(1, x))
+					return [sign * h1, k1];
+				f = 1 / (f - a);
+				if (!isFinite(f)) break;
+			}
+			return null;
+		}
+
+		fmt(v)
+		{
+			if (Math.abs(v) < 1e-12) return "0";
+			if (this.useFractions)
+			{
+				const fr = this.toFraction(v);
+				if (fr)
+				{
+					if (fr[1] == 1) return fr[0].toString();
+					return (fr[0] < 0 ? "-" : "") + `\\frac{${Math.abs(fr[0])}}{${fr[1]}}`;
+				}
+			}
+			let s = parseFloat(v.toPrecision(5)).toString();
+			if (s.indexOf("e") >= 0)
+			{
+				const [m, e] = s.split("e");
+				s = `${m}\\cdot 10^{${parseInt(e)}}`;
+			}
+			return s;
+		}
+
+		// value used as a factor: negative numbers get parentheses
+		fmtFactor(v)
+		{
+			const s = this.fmt(v);
+			return s.startsWith("-") ? `\\left(${s}\\right)` : s;
+		}
+
+		// ---------- LaTeX output ----------
+		latexMatrix(M, hl)
+		{
+			hl = hl || {};
+			let rows = [];
+			for (let i = 0; i < M.length; i++)
+			{
+				let cells = [];
+				for (let j = 0; j < M[i].length; j++)
+				{
+					let s = this.fmt(M[i][j]);
+					const style = hl[i + "," + j];
+					if (style == "pivot")
+						s = `\\bbox[2px,border:2px solid ${COLORS.pivot}]{\\color{${COLORS.pivot}}{\\mathbf{${s}}}}`;
+					else if (style)
+						s = `{\\color{${COLORS[style]}}{\\mathbf{${s}}}}`;
+					cells.push(s);
+				}
+				rows.push(cells.join(" & "));
+			}
+			return "\\begin{pmatrix}" + rows.join(" \\\\ ") + "\\end{pmatrix}";
+		}
+
+		latexVector(v, color)
+		{
+			return this.latexMatrix(v.map(a => [a]),
+				color ? Object.fromEntries(v.map((_, i) => [i + ",0", color])) : {});
+		}
+
+		// ---------- control ----------
+		reset()
+		{
+			const name = document.getElementById('matrix').value;
+			this.pivoting = document.getElementById('pivoting').checked;
+			this.useFractions = document.getElementById('fractions').checked;
+			this.system = this.getSystem(name);
+			this.rebuild();
+			this.setStep(0);
+		}
+
+		rebuild()
+		{
+			this.steps = this.decompose(this.system.A, this.system.b, this.pivoting).steps;
+			const slider = document.getElementById('step');
+			slider.max = this.steps.length - 1;
+		}
+
+		setStep(s)
+		{
+			this.step = Math.max(0, Math.min(this.steps.length - 1, s));
+			document.getElementById('step').value = this.step;
+			document.getElementById('textInput').value = this.step + " / " + (this.steps.length - 1);
+			this.render();
+		}
+
+		render()
+		{
+			const frac = document.getElementById('fractions').checked;
+			if (frac != this.useFractions)
+			{
+				// step descriptions contain formatted numbers -> rebuild them
+				this.useFractions = frac;
+				this.rebuild();
+			}
+
+			const st = this.steps[this.step];
+			const A = this.system.A, b = this.system.b;
+
+			document.getElementById('system').innerHTML =
+				`$$A\\mathbf{x} = \\mathbf{b}: \\qquad ${this.latexMatrix(A)}\\,\\mathbf{x} = ${this.latexVector(b)}$$`;
+			document.getElementById('stepTitle').innerHTML = `Step ${this.step}: ${st.title}`;
+
+			let m = "";
+			let check = "";
+			const matrixRow = (S, hl) =>
+				`<div class="matrix-row">` +
+				`<div>$$P = ${this.latexMatrix(S.P, hl.P)}$$</div>` +
+				`<div>$$L = ${this.latexMatrix(S.L, hl.L)}$$</div>` +
+				`<div>$$U = ${this.latexMatrix(S.U, hl.U)}$$</div>` +
+				`</div>`;
+
+			if (st.kind == "matrices")
+			{
+				const prev = this.step > 0 ? this.steps[this.step - 1] : null;
+				// the summary step does not change the matrices -> no before/after comparison
+				if (prev && prev.kind == "matrices" && st.title != "Decomposition complete")
+				{
+					m += `<div class="state-label">Before this step (result of step ${this.step - 1}):</div>`;
+					m += `<div class="before">${matrixRow(prev, st.hlBefore)}</div>`;
+					m += `<div class="arrow">&#8595;</div>`;
+					m += `<div class="state-label">After this step:</div>`;
+				}
+				m += matrixRow(st, st.hl);
+				const err = maxDiff(matMul(st.P, A), matMul(st.L, st.U));
+				check = `Invariant: $\\max_{ij} |(PA - LU)_{ij}| = ${err < 1e-12 ? "0" : err.toExponential(2)}$ ` +
+						(err < 1e-9 ? "&#10004;" : "&#10008;");
+			}
+			else if (st.kind == "permute")
+			{
+				const PT = st.P.map((row, i) => row.map((_, j) => st.P[j][i]));
+				m += `<div class="matrix-row">`;
+				m += `<div>$$\\underbrace{${this.latexMatrix(PT)}}_{P^T}\\,${this.latexVector(st.z, "swap")} = ${this.latexVector(b)}$$</div>`;
+				m += `<div>$$\\Rightarrow\\quad \\mathbf{z} = P\\mathbf{b} = ${this.latexMatrix(st.P)}${this.latexVector(b)} = ${this.latexVector(st.z, "swap")}$$</div>`;
+				m += `</div>`;
+			}
+			else if (st.kind == "forward")
+			{
+				m += `<div class="matrix-row">`;
+				m += `<div>$$\\underbrace{${this.latexMatrix(st.L)}}_{L}\\,${this.latexVector(st.y, "newL")} = ${this.latexVector(st.z, "swap")}$$</div>`;
+				m += `</div>`;
+			}
+			else if (st.kind == "backward")
+			{
+				m += `<div class="matrix-row"><div>$$\\underbrace{${this.latexMatrix(st.U)}}_{U}\\,${this.latexVector(st.x, "changed")} = ${this.latexVector(st.y, "newL")}$$</div></div>`;
+				const r = matVec(A, st.x).map((a, i) => a - b[i]);
+				const err = Math.max(...r.map(Math.abs));
+				check = `Solution: $\\mathbf{x}^T = (${st.x.map(v => this.fmt(v)).join(",\\ ")})$, &nbsp; ` +
+						`residual $\\|A\\mathbf{x} - \\mathbf{b}\\|_\\infty = ${err < 1e-12 ? "0" : err.toExponential(2)}$`;
+			}
+			document.getElementById('matrices').innerHTML = m;
+			document.getElementById('stepDesc').innerHTML = st.desc;
+			document.getElementById('check').innerHTML = check;
+
+			if (window.MathJax && MathJax.Hub)
+				MathJax.Hub.Queue(["Typeset", MathJax.Hub, document.getElementById('display')]);
+		}
+	}
+
+	viz = new LUVisualization();
+	viz.reset();
+</script>
+
+</body>
+</html>

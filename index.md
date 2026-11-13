@@ -16,6 +16,11 @@ I hope the examples and their documentation help you to learn something about th
 * [Numerical integration](examples/numerical_integration.html)
 * [Heat equation](examples/heat_equation.html)
 
+# Linear systems
+
+* [LU decomposition](examples/LU_decomposition.html)
+* [Jacobi and Gauss-Seidel methods](examples/Jacobi_GaussSeidel.html)
+
 # Newton's method
 
 * [Newton's method](examples/Newton_solver.html)

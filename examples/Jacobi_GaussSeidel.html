@@ -1,0 +1,634 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		TeX: { extensions: ["AMSmath.js", "AMSsymbols.js", "color.js"] },
+		"HTML-CSS": { fonts: ["TeX"] },
+		messageStyle: "none"
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<script src="https://cdn.plot.ly/plotly-2.5.1.min.js"></script>
+	<title>Jacobi and Gauss-Seidel</title>
+	<style>
+		.plot-row { display: flex; flex-wrap: wrap; gap: 8px; }
+		.plot-row > div { flex: 1 1 320px; min-width: 0; height: 420px; background-color: #EEEEEE; }
+		#display { background-color: #EEEEEE; padding: 12px 16px; margin-top: 8px; }
+		#stepTitle { margin: 4px 0 8px 0; }
+		.matrix-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 32px; }
+		.matrix-row > div { overflow-x: auto; max-width: 100%; }
+		.formulas > div { overflow-x: auto; max-width: 100%; }
+		#stepDesc { margin-top: 8px; line-height: 1.5; }
+		#properties { font-size: 0.95em; line-height: 1.6; }
+		.check { font-size: 0.95em; margin-top: 6px; }
+		.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.9em; margin-top: 10px; }
+		.legend span b { display: inline-block; width: 12px; height: 12px; margin-right: 5px; vertical-align: middle; }
+		.btn-row button { margin-right: 6px; padding: 3px 10px; }
+	</style>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>Jacobi and Gauss-Seidel iteration</h1>
+</header>
+
+<main>
+	<!-- Visualization panel: plots + step details -->
+	<div class="card sim-panel">
+		<div class="sim-canvas-wrap">
+			<div class="plot-row">
+				<div id="pathPlot"></div>
+				<div id="convPlot"></div>
+			</div>
+			<div id="display">
+				<div id="system"></div>
+				<div id="properties"></div>
+				<h3 id="stepTitle"></h3>
+				<div id="vectors"></div>
+				<div id="stepDesc"></div>
+				<div id="formulas" class="formulas"></div>
+				<div id="check" class="check"></div>
+				<div class="legend">
+					<span><b style="background:#d68910"></b>values of the old iterate $\mathbf{x}^{(k-1)}$</span>
+					<span><b style="background:#1e8449"></b>values of the new iterate $\mathbf{x}^{(k)}$</span>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div class="controls-panel" style="width: 100%;align:center;margin-left:auto;margin-right:auto">
+		<h3>Controls</h3>
+		<div class="controls-grid" style="width: 400px;align:left">
+			<label for="iterations">Iterations</label>
+			<span class="stat-value"><input type="text" id="textInput" value="0" readonly></span>
+
+			<label></label>
+			<input oninput="viz.setStep(parseInt(this.value))" id="iterations" value="0" type="range" min="0" max="100" step="1">
+
+			<label></label>
+			<span class="btn-row">
+				<button onclick="viz.setStep(viz.step-1)">&#9664; Previous</button>
+				<button onclick="viz.setStep(viz.step+1)">Next &#9654;</button>
+			</span>
+
+			<label for="method">Method</label>
+			<select onchange="viz.render()" id="method" size="1">
+				<option selected="selected">Jacobi</option>
+				<option>Gauss-Seidel</option>
+			</select>
+
+			<label for="matrix">Matrix</label>
+			<select onchange="viz.reset()" id="matrix" size="1">
+				<option selected="selected">2x2 diagonally dominant</option>
+				<option>2x2 symmetric positive definite</option>
+				<option>2x2 not convergent</option>
+				<option>3x3 diagonally dominant</option>
+				<option>3x3 SPD, Jacobi diverges</option>
+				<option>5x5 Poisson (1D Laplacian)</option>
+			</select>
+
+			<label for="x0">Initial guess</label>
+			<select onchange="viz.reset()" id="x0" size="1">
+				<option selected="selected">zero vector</option>
+				<option>random</option>
+			</select>
+		</div>
+	</div>
+
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>Iterative solvers</h2>
+
+		<p>Direct methods like the LU decomposition require $\mathcal{O}(n^3)$ operations and destroy the sparsity of a matrix (fill-in).
+		For the large and sparse linear systems which occur in physics simulations, iterative methods are often preferred.
+		Starting with an initial guess $\mathbf{x}^{(0)}$, they compute a sequence of approximations $\mathbf{x}^{(1)}, \mathbf{x}^{(2)}, \dots$ which hopefully converges to the solution of $A\mathbf{x} = \mathbf{b}$.
+		Each iteration only costs about as much as a matrix-vector product, i.e. $\mathcal{O}(n)$ for a sparse matrix.</p>
+
+		<p>Both methods are based on splitting the matrix in its strictly lower triangular part $L$, its diagonal $D$ and its strictly upper triangular part $U$:</p>
+		$$A = L + D + U.$$
+
+		<h3>Jacobi method</h3>
+		<p>The $i$-th equation is solved for the unknown $x_i$, where all other unknowns are taken from the previous iterate:</p>
+		$$x_i^{(k+1)} = \frac{1}{a_{ii}}\left(b_i - \sum_{j \neq i} a_{ij}\, x_j^{(k)}\right), \qquad i = 1,\dots,n.$$
+		<p>In matrix notation: $\mathbf{x}^{(k+1)} = D^{-1}\left(\mathbf{b} - (L + U)\,\mathbf{x}^{(k)}\right)$.
+		All components can be computed independently, so the Jacobi method is easy to parallelize (e.g. on the GPU). However, a copy of the old iterate is required.</p>
+
+		<h3>Gauss-Seidel method</h3>
+		<p>Gauss-Seidel uses the same formula, but the new values $x_j^{(k+1)}$ of the components $j < i$ are used as soon as they are available:</p>
+		$$x_i^{(k+1)} = \frac{1}{a_{ii}}\left(b_i - \sum_{j \lt i} a_{ij}\, x_j^{(k+1)} - \sum_{j > i} a_{ij}\, x_j^{(k)}\right), \qquad i = 1,\dots,n.$$
+		<p>In matrix notation: $\mathbf{x}^{(k+1)} = (D + L)^{-1}\left(\mathbf{b} - U\,\mathbf{x}^{(k)}\right)$.
+		The vector can be updated in place, and the method usually converges faster than Jacobi (for many matrices, e.g. the Poisson matrix, one Gauss-Seidel iteration is as good as two Jacobi iterations).
+		But the components must be computed sequentially, which makes the parallelization more difficult.
+		In the 2D plot you can see that Gauss-Seidel moves along the coordinate axes: each sub-step solves one equation exactly, i.e. it moves horizontally or vertically onto the line of that equation.</p>
+
+		<h3>Convergence</h3>
+		<p>Both methods have the form $\mathbf{x}^{(k+1)} = M\mathbf{x}^{(k)} + \mathbf{c}$ with the iteration matrix
+		$M_J = -D^{-1}(L+U)$ (Jacobi) or $M_{GS} = -(D+L)^{-1}U$ (Gauss-Seidel).
+		The error $\mathbf{e}^{(k)} = \mathbf{x}^{(k)} - \mathbf{x}^*$ satisfies $\mathbf{e}^{(k+1)} = M\mathbf{e}^{(k)}$.
+		Hence, the method converges for every initial guess if and only if the spectral radius $\rho(M) < 1$. The smaller $\rho(M)$, the faster the convergence: in each iteration the error is reduced by about the factor $\rho(M)$.</p>
+		<p>Sufficient conditions which are easier to check:</p>
+		<ul>
+			<li>If $A$ is strictly diagonally dominant, i.e. $|a_{ii}| > \sum_{j\neq i} |a_{ij}|$ for all $i$, both methods converge.</li>
+			<li>If $A$ is symmetric positive definite, Gauss-Seidel converges (but Jacobi not necessarily, see example "3x3 SPD, Jacobi diverges").</li>
+		</ul>
+		<p>Note that the order of the equations matters: In the example "2x2 not convergent" both methods diverge. If both equations are swapped, the matrix becomes diagonally dominant and both methods converge.</p>
+		<p>In practice the iteration is stopped when the residual $\|\mathbf{b} - A\mathbf{x}^{(k)}\|$ is small enough or a maximum number of iterations is reached.
+		The convergence plot shows the residual of both methods on a logarithmic scale.</p>
+
+		<h3>Relation to physics simulation</h3>
+		<p>Position based dynamics solves its constraints in a (nonlinear) Gauss-Seidel fashion: one constraint after the other is projected and the updated positions are used immediately.
+		Jacobi-style variants, where all constraints are processed in parallel and the corrections are averaged, are popular on the GPU.</p>
+	</div>
+
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	const OLD_COLOR = "#d68910";
+	const NEW_COLOR = "#1e8449";
+	const MAX_ITERATIONS = 100;
+
+	// ---------- small linear algebra helpers ----------
+	function matMul(A, B)
+	{
+		let n = A.length, m = B[0].length, K = B.length;
+		let C = [];
+		for (let i = 0; i < n; i++)
+		{
+			C.push(new Array(m).fill(0));
+			for (let j = 0; j < m; j++)
+				for (let k = 0; k < K; k++)
+					C[i][j] += A[i][k] * B[k][j];
+		}
+		return C;
+	}
+
+	function matVec(A, x) { return A.map(row => row.reduce((s, a, j) => s + a * x[j], 0)); }
+
+	function norm(v) { return Math.sqrt(v.reduce((s, a) => s + a * a, 0)); }
+
+	function residualNorm(A, b, x) { return norm(matVec(A, x).map((a, i) => b[i] - a)); }
+
+	// direct solver (Gaussian elimination with partial pivoting) for the reference solution
+	function solveDirect(A, b)
+	{
+		const n = A.length;
+		let M = A.map((row, i) => row.concat([b[i]]));
+		for (let k = 0; k < n; k++)
+		{
+			let p = k;
+			for (let i = k + 1; i < n; i++)
+				if (Math.abs(M[i][k]) > Math.abs(M[p][k])) p = i;
+			[M[k], M[p]] = [M[p], M[k]];
+			for (let i = k + 1; i < n; i++)
+			{
+				const l = M[i][k] / M[k][k];
+				for (let j = k; j <= n; j++)
+					M[i][j] -= l * M[k][j];
+			}
+		}
+		let x = new Array(n).fill(0);
+		for (let i = n - 1; i >= 0; i--)
+		{
+			let s = M[i][n];
+			for (let j = i + 1; j < n; j++)
+				s -= M[i][j] * x[j];
+			x[i] = s / M[i][i];
+		}
+		return x;
+	}
+
+	// spectral radius via Gelfand's formula rho(M) = lim ||M^k||^(1/k)
+	function spectralRadius(M)
+	{
+		const K = 1000;
+		let P = M.map(row => row.slice());
+		let logScale = 0;
+		for (let k = 1; k < K; k++)
+		{
+			let nrm = Math.max(...P.map(row => Math.max(...row.map(Math.abs))));
+			if (nrm < 1e-300) return 0;
+			P = P.map(row => row.map(a => a / nrm));
+			logScale += Math.log(nrm);
+			P = matMul(P, M);
+		}
+		let nrm = Math.max(...P.map(row => Math.max(...row.map(Math.abs))));
+		if (nrm < 1e-300) return 0;
+		return Math.exp((logScale + Math.log(nrm)) / K);
+	}
+
+	class IterativeSolverViz
+	{
+		constructor()
+		{
+			this.step = 0;
+		}
+
+		// ---------- example systems ----------
+		getSystem(name)
+		{
+			if (name == "2x2 diagonally dominant")
+				return { A: [[4, 1], [2, 5]], b: [5, 7] };
+			if (name == "2x2 symmetric positive definite")
+				return { A: [[3, 2], [2, 3]], b: [5, 5] };
+			if (name == "2x2 not convergent")
+				return { A: [[1, 2], [3, 1]], b: [3, 4] };
+			if (name == "3x3 diagonally dominant")
+				return { A: [[4, -1, 1], [-1, 4, -2], [1, -2, 5]], b: [5, 1, 12] };
+			if (name == "3x3 SPD, Jacobi diverges")
+				return { A: [[1, 0.8, 0.8], [0.8, 1, 0.8], [0.8, 0.8, 1]], b: [2.6, 2.6, 2.6] };
+			// 5x5 Poisson
+			return { A: [[2, -1, 0, 0, 0], [-1, 2, -1, 0, 0], [0, -1, 2, -1, 0], [0, 0, -1, 2, -1], [0, 0, 0, -1, 2]],
+					 b: [0, 0, 2, 0, 0] };
+		}
+
+		// ---------- the two methods ----------
+		jacobiStep(A, b, x)
+		{
+			const n = A.length;
+			let xNew = new Array(n);
+			for (let i = 0; i < n; i++)
+			{
+				let s = b[i];
+				for (let j = 0; j < n; j++)
+					if (j != i)
+						s -= A[i][j] * x[j];     // only old values
+				xNew[i] = s / A[i][i];
+			}
+			return { x: xNew, sub: [xNew.slice()] };
+		}
+
+		gaussSeidelStep(A, b, x)
+		{
+			const n = A.length;
+			let xNew = x.slice();               // updated in place
+			let sub = [];                       // state after each component update (for the 2D plot)
+			for (let i = 0; i < n; i++)
+			{
+				let s = b[i];
+				for (let j = 0; j < n; j++)
+					if (j != i)
+						s -= A[i][j] * xNew[j]; // new values for j < i, old values for j > i
+				xNew[i] = s / A[i][i];
+				sub.push(xNew.slice());
+			}
+			return { x: xNew, sub: sub };
+		}
+
+		runMethod(stepFct)
+		{
+			const A = this.system.A, b = this.system.b;
+			let X = [this.x0.slice()];
+			let sub = [[]];
+			let res = [residualNorm(A, b, this.x0)];
+			for (let k = 1; k <= MAX_ITERATIONS; k++)
+			{
+				const r = stepFct.call(this, A, b, X[k - 1]);
+				X.push(r.x);
+				sub.push(r.sub);
+				res.push(residualNorm(A, b, r.x));
+			}
+			return { X: X, sub: sub, res: res };
+		}
+
+		// ---------- matrix properties ----------
+		analyze(A)
+		{
+			const n = A.length;
+			let strict = true, weak = true, symmetric = true;
+			for (let i = 0; i < n; i++)
+			{
+				let off = 0;
+				for (let j = 0; j < n; j++)
+				{
+					if (j != i) off += Math.abs(A[i][j]);
+					if (Math.abs(A[i][j] - A[j][i]) > 1e-12) symmetric = false;
+				}
+				if (Math.abs(A[i][i]) <= off) strict = false;
+				if (Math.abs(A[i][i]) < off) weak = false;
+			}
+
+			// positive definite <=> Cholesky decomposition exists
+			let spd = symmetric;
+			if (symmetric)
+			{
+				let C = A.map(row => new Array(n).fill(0));
+				for (let j = 0; j < n && spd; j++)
+				{
+					let d = A[j][j];
+					for (let k = 0; k < j; k++) d -= C[j][k] * C[j][k];
+					if (d <= 1e-14) { spd = false; break; }
+					C[j][j] = Math.sqrt(d);
+					for (let i = j + 1; i < n; i++)
+					{
+						let s = A[i][j];
+						for (let k = 0; k < j; k++) s -= C[i][k] * C[j][k];
+						C[i][j] = s / C[j][j];
+					}
+				}
+			}
+
+			// iteration matrices
+			let MJ = A.map((row, i) => row.map((a, j) => i == j ? 0 : -a / A[i][i]));
+			// M_GS = -(D+L)^{-1} U, computed column by column with forward substitution
+			let MGS = A.map(row => new Array(n).fill(0));
+			for (let c = 0; c < n; c++)
+			{
+				for (let i = 0; i < n; i++)
+				{
+					let s = (c > i) ? A[i][c] : 0;   // column c of U
+					for (let j = 0; j < i; j++)
+						s -= A[i][j] * MGS[j][c];
+					MGS[i][c] = s / A[i][i];
+				}
+			}
+			MGS = MGS.map(row => row.map(a => -a));
+
+			return { dominance: strict ? "strictly" : (weak ? "weakly" : "no"),
+					 spd: spd, rhoJ: spectralRadius(MJ), rhoGS: spectralRadius(MGS) };
+		}
+
+		// ---------- number formatting ----------
+		fmt(v)
+		{
+			if (!isFinite(v)) return "\\infty";
+			if (Math.abs(v) < 1e-12) return "0";
+			if (Math.abs(v) >= 1e5 || Math.abs(v) < 1e-4)
+			{
+				const [m, e] = v.toExponential(3).split("e");
+				return `${parseFloat(m)}\\cdot 10^{${parseInt(e)}}`;
+			}
+			return parseFloat(v.toPrecision(5)).toString();
+		}
+
+		fmtFactor(v)
+		{
+			const s = this.fmt(v);
+			return s.startsWith("-") ? `\\left(${s}\\right)` : s;
+		}
+
+		colored(s, color) { return `{\\color{${color}}{${s}}}`; }
+
+		latexMatrix(M)
+		{
+			return "\\begin{pmatrix}" + M.map(row => row.map(a => this.fmt(a)).join(" & ")).join(" \\\\ ") + "\\end{pmatrix}";
+		}
+
+		latexVector(v, color)
+		{
+			return "\\begin{pmatrix}" + v.map(a => color ? this.colored(this.fmt(a), color) : this.fmt(a)).join(" \\\\ ") + "\\end{pmatrix}";
+		}
+
+		// formula for component i of the iteration step x^(k-1) -> x^(k)
+		componentFormula(i, xOld, xNew, k, gs)
+		{
+			const A = this.system.A, b = this.system.b, n = A.length;
+			const I = i + 1;
+			let sym = `x_{${I}}^{(${k})} = \\frac{1}{a_{${I}${I}}}\\left(b_{${I}}`;
+			let num = `\\frac{1}{${this.fmt(A[i][i])}}\\left(${this.fmt(b[i])}`;
+			for (let j = 0; j < n; j++)
+			{
+				if (j == i || A[i][j] == 0) continue;
+				const useNew = gs && j < i;
+				const color = useNew ? NEW_COLOR : OLD_COLOR;
+				const val = useNew ? xNew[j] : xOld[j];
+				sym += ` - a_{${I}${j + 1}}\\,` + this.colored(`x_{${j + 1}}^{(${useNew ? k : k - 1})}`, color);
+				num += ` - ${this.fmtFactor(A[i][j])}\\cdot ` + this.colored(this.fmtFactor(val), color);
+			}
+			sym += "\\right)";
+			num += "\\right)";
+			return `<div>$$${sym} = ${num} = ${this.colored("\\mathbf{" + this.fmt(xNew[i]) + "}", NEW_COLOR)}$$</div>`;
+		}
+
+		// ---------- control ----------
+		reset()
+		{
+			this.system = this.getSystem(document.getElementById('matrix').value);
+			const n = this.system.A.length;
+			if (document.getElementById('x0').value == "random")
+				this.x0 = Array.from({ length: n }, () => Math.round((Math.random() * 6 - 3) * 10) / 10);
+			else
+				this.x0 = new Array(n).fill(0);
+
+			this.xStar = solveDirect(this.system.A, this.system.b);
+			this.props = this.analyze(this.system.A);
+			this.jacobi = this.runMethod(this.jacobiStep);
+			this.gs = this.runMethod(this.gaussSeidelStep);
+			this.setStep(0);
+		}
+
+		setStep(s)
+		{
+			this.step = Math.max(0, Math.min(MAX_ITERATIONS, s));
+			document.getElementById('iterations').value = this.step;
+			document.getElementById('textInput').value = this.step;
+			this.render();
+		}
+
+		render()
+		{
+			const gs = document.getElementById('method').value == "Gauss-Seidel";
+			this.plotPath(gs);
+			this.plotConvergence(gs);
+			this.renderDisplay(gs);
+		}
+
+		// ---------- plots ----------
+		plotPath(gs)
+		{
+			const div = document.getElementById('pathPlot');
+			const A = this.system.A, b = this.system.b;
+			if (A.length != 2)
+			{
+				Plotly.purge(div);
+				div.style.display = "none";
+				return;
+			}
+			div.style.display = "";
+
+			const run = gs ? this.gs : this.jacobi;
+			const k = this.step;
+
+			// visible region around initial guess and solution
+			const xs = [this.x0[0], this.xStar[0]], ys = [this.x0[1], this.xStar[1]];
+			const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
+			const cx = 0.5 * (Math.max(...xs) + Math.min(...xs)), cy = 0.5 * (Math.max(...ys) + Math.min(...ys));
+			const half = 0.5 * size + 0.6 * size;
+			const xr = [cx - half, cx + half], yr = [cy - half, cy + half];
+
+			// line of equation i: a_i1 x1 + a_i2 x2 = b_i
+			const line = (i, color) =>
+			{
+				let lx, ly;
+				if (Math.abs(A[i][1]) > 1e-12)
+				{
+					lx = [xr[0] - 10 * size, xr[1] + 10 * size];
+					ly = lx.map(x => (b[i] - A[i][0] * x) / A[i][1]);
+				}
+				else
+				{
+					lx = [b[i] / A[i][0], b[i] / A[i][0]];
+					ly = [yr[0] - 10 * size, yr[1] + 10 * size];
+				}
+				return { x: lx, y: ly, mode: "lines", line: { color: color, width: 2 },
+						 name: `equation ${i + 1}: ${A[i][0]}x₁ + ${A[i][1]}x₂ = ${b[i]}` };
+			};
+
+			// path of the iterates (including Gauss-Seidel sub-steps)
+			let px = [this.x0[0]], py = [this.x0[1]];
+			for (let it = 1; it < k; it++)
+				for (const v of run.sub[it]) { px.push(v[0]); py.push(v[1]); }
+
+			let data = [line(0, "#2471a3"), line(1, "#8e44ad")];
+			data.push({ x: px, y: py, mode: "lines+markers", line: { color: "#555555", width: 2 }, marker: { size: 6 },
+						name: "previous iterations" });
+
+			if (k > 0)
+			{
+				const xOld = run.X[k - 1];
+				let cx_ = [xOld[0]], cy_ = [xOld[1]];
+				for (const v of run.sub[k]) { cx_.push(v[0]); cy_.push(v[1]); }
+				if (!gs)
+				{
+					// Jacobi: x1 solves equation 1 with old x2, x2 solves equation 2 with old x1
+					const xNew = run.X[k];
+					data.push({ x: [xOld[0], xNew[0], null, xOld[0], xOld[0]], y: [xOld[1], xOld[1], null, xOld[1], xNew[1]],
+								mode: "lines", line: { color: "#c0392b", width: 1.5, dash: "dot" },
+								name: "Jacobi: each equation solved with old values" });
+				}
+				data.push({ x: cx_, y: cy_, mode: "lines+markers", line: { color: "#c0392b", width: 3 }, marker: { size: 8 },
+							name: `current iteration ${k - 1} → ${k}` });
+			}
+
+			data.push({ x: [this.x0[0]], y: [this.x0[1]], mode: "markers+text", marker: { size: 10, color: "#000000" },
+						text: ["x⁽⁰⁾"], textposition: "bottom center", name: "initial guess" });
+			data.push({ x: [this.xStar[0]], y: [this.xStar[1]], mode: "markers", marker: { size: 12, symbol: "star", color: "#f1c40f",
+						line: { color: "#000000", width: 1 } }, name: "solution x*" });
+
+			const layout = {
+				title: (gs ? "Gauss-Seidel" : "Jacobi") + " iterates",
+				autosize: true,
+				margin: { l: 45, r: 15, t: 40, b: 40 },
+				xaxis: { range: xr, title: "x₁" },
+				yaxis: { range: yr, title: "x₂", scaleanchor: "x" },
+				legend: { orientation: "h", y: -0.15 },
+				paper_bgcolor: "#EEEEEE"
+			};
+			Plotly.newPlot(div, data, layout, { responsive: true });
+		}
+
+		plotConvergence(gs)
+		{
+			const clamp = r => Math.min(Math.max(r, 1e-16), 1e100);
+			const it = Array.from({ length: MAX_ITERATIONS + 1 }, (_, i) => i);
+			const data = [
+				{ x: it, y: this.jacobi.res.map(clamp), mode: "lines", name: "Jacobi",
+				  line: { color: "#2471a3", width: gs ? 1.5 : 3, dash: gs ? "dash" : "solid" } },
+				{ x: it, y: this.gs.res.map(clamp), mode: "lines", name: "Gauss-Seidel",
+				  line: { color: "#c0392b", width: gs ? 3 : 1.5, dash: gs ? "solid" : "dash" } },
+				{ x: [this.step], y: [clamp((gs ? this.gs : this.jacobi).res[this.step])], mode: "markers",
+				  marker: { size: 10, color: "#000000" }, name: "current iteration" }
+			];
+			const layout = {
+				title: "Convergence",
+				autosize: true,
+				margin: { l: 60, r: 15, t: 40, b: 40 },
+				xaxis: { title: "iteration k", range: [0, MAX_ITERATIONS] },
+				yaxis: { title: "residual ‖b − Ax⁽ᵏ⁾‖", type: "log", exponentformat: "power" },
+				legend: { orientation: "h", y: -0.15 },
+				shapes: [{ type: "line", x0: this.step, x1: this.step, yref: "paper", y0: 0, y1: 1,
+						   line: { color: "#888888", dash: "dot" } }],
+				paper_bgcolor: "#EEEEEE"
+			};
+			Plotly.newPlot('convPlot', data, layout, { responsive: true });
+		}
+
+		// ---------- step details ----------
+		renderDisplay(gs)
+		{
+			const A = this.system.A, b = this.system.b, n = A.length;
+			const run = gs ? this.gs : this.jacobi;
+			const k = this.step;
+			const p = this.props;
+
+			document.getElementById('system').innerHTML =
+				`$$A\\mathbf{x} = \\mathbf{b}: \\qquad ${this.latexMatrix(A)}\\,\\mathbf{x} = ${this.latexVector(b)}$$`;
+
+			const conv = rho => rho < 1 ? "converges" : "diverges";
+			document.getElementById('properties').innerHTML =
+				`Diagonally dominant: <b>${p.dominance}</b> &nbsp;·&nbsp; symmetric positive definite: <b>${p.spd ? "yes" : "no"}</b><br>` +
+				`Spectral radius of the iteration matrix: Jacobi $\\rho(M_J) \\approx ${p.rhoJ.toFixed(3)}$ (${conv(p.rhoJ)}), ` +
+				`Gauss-Seidel $\\rho(M_{GS}) \\approx ${p.rhoGS.toFixed(3)}$ (${conv(p.rhoGS)})`;
+
+			let title, vectors = "", desc = "", formulas = "";
+			if (k == 0)
+			{
+				title = "Step 0: initial guess";
+				const Lm = A.map((row, i) => row.map((a, j) => j < i ? a : 0));
+				const Dm = A.map((row, i) => row.map((a, j) => j == i ? a : 0));
+				const Um = A.map((row, i) => row.map((a, j) => j > i ? a : 0));
+				vectors = `<div class="matrix-row"><div>$$\\mathbf{x}^{(0)} = ${this.latexVector(this.x0, NEW_COLOR)}$$</div>` +
+						  `<div>$$\\mathbf{x}^* = ${this.latexVector(this.xStar)}$$</div></div>` +
+						  `<div class="matrix-row"><div>$$A = \\underbrace{${this.latexMatrix(Lm)}}_{L} + \\underbrace{${this.latexMatrix(Dm)}}_{D} + \\underbrace{${this.latexMatrix(Um)}}_{U}$$</div></div>`;
+				desc = "The iteration starts with the initial guess $\\mathbf{x}^{(0)}$. The exact solution $\\mathbf{x}^*$ is only shown for comparison. " +
+					   "The matrix is split into its strictly lower triangular part $L$, its diagonal $D$ and its strictly upper triangular part $U$. " +
+					   (gs ? "Gauss-Seidel iteration: $\\mathbf{x}^{(k+1)} = (D+L)^{-1}\\left(\\mathbf{b} - U\\mathbf{x}^{(k)}\\right)$."
+						   : "Jacobi iteration: $\\mathbf{x}^{(k+1)} = D^{-1}\\left(\\mathbf{b} - (L+U)\\mathbf{x}^{(k)}\\right)$.") +
+					   " Press <i>Next</i> to perform the first iteration.";
+			}
+			else
+			{
+				title = `Iteration ${k}: $\\mathbf{x}^{(${k - 1})} \\rightarrow \\mathbf{x}^{(${k})}$`;
+				const xOld = run.X[k - 1], xNew = run.X[k];
+				vectors = `<div class="matrix-row">` +
+						  `<div>$$\\mathbf{x}^{(${k - 1})} = ${this.latexVector(xOld, OLD_COLOR)}$$</div>` +
+						  `<div>$$\\longrightarrow$$</div>` +
+						  `<div>$$\\mathbf{x}^{(${k})} = ${this.latexVector(xNew, NEW_COLOR)}$$</div>` +
+						  `<div>$$\\mathbf{x}^* = ${this.latexVector(this.xStar)}$$</div></div>`;
+				if (gs)
+					desc = "Gauss-Seidel: each equation $i$ is solved for $x_i$, one after the other. " +
+						   "The components $x_j$ with $j \\lt i$ were already updated in this iteration and their <b>new</b> values are used immediately:";
+				else
+					desc = "Jacobi: each equation $i$ is solved for $x_i$ using only the <b>old</b> values of all other components. " +
+						   "Therefore, all components can be computed independently (in parallel):";
+				for (let i = 0; i < n; i++)
+					formulas += this.componentFormula(i, xOld, xNew, k, gs);
+			}
+
+			const x = run.X[k];
+			const err = norm(x.map((a, i) => a - this.xStar[i]));
+			const res = run.res[k];
+			let check = `Residual $\\|\\mathbf{b} - A\\mathbf{x}^{(${k})}\\|_2 = ${this.fmt(res)}$, &nbsp; error $\\|\\mathbf{x}^{(${k})} - \\mathbf{x}^*\\|_2 = ${this.fmt(err)}$`;
+			if (k > 0)
+			{
+				const errOld = norm(run.X[k - 1].map((a, i) => a - this.xStar[i]));
+				if (errOld > 1e-14 && err > 1e-14)
+					check += `, &nbsp; error reduction factor $\\frac{\\|\\mathbf{e}^{(${k})}\\|}{\\|\\mathbf{e}^{(${k - 1})}\\|} = ${this.fmt(err / errOld)}$`;
+			}
+
+			document.getElementById('stepTitle').innerHTML = title;
+			document.getElementById('vectors').innerHTML = vectors;
+			document.getElementById('stepDesc').innerHTML = desc;
+			document.getElementById('formulas').innerHTML = formulas;
+			document.getElementById('check').innerHTML = check;
+
+			if (window.MathJax && MathJax.Hub)
+				MathJax.Hub.Queue(["Typeset", MathJax.Hub, document.getElementById('display')]);
+		}
+	}
+
+	viz = new IterativeSolverViz();
+	viz.reset();
+</script>
+
+</body>
+</html>
