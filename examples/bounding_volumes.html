@@ -1,0 +1,1334 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Bounding Volumes</title>
+	<style>
+		#compareTable { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 8px; }
+		#compareTable th, #compareTable td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; text-align: right; }
+		#compareTable th:first-child, #compareTable td:first-child { text-align: left; }
+		#compareTable th { color: #4b5563; font-weight: 600; background: #f5f7ff; }
+		#compareTable tbody tr { cursor: pointer; }
+		#compareTable tbody tr:hover { background: #f3f4f6; }
+		#compareTable tbody tr.selected { background: #e8eefc; font-weight: 600; }
+		.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; margin-right: 6px; }
+		.theory table.costs { border-collapse: collapse; margin: 10px 0; font-size: 0.92rem; }
+		.theory table.costs th, .theory table.costs td { border: 1px solid #d1d5db; padding: 5px 10px; text-align: left; vertical-align: top; }
+		.theory table.costs th { background: #f5f7ff; }
+	</style>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>Bounding Volumes</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="70%">
+		<col width="30%">
+		<tr>
+			<td>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="640" style="border:2px solid #000000;border-radius: 20px;background-color:#FFFFFF">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+					<p class="canvas-hint">Drag an object to move it. Shift + drag (or right-drag, or the mouse wheel over an object) rotates it.</p>
+
+					<div class="sim-canvas-wrap" style="margin-top:6px">
+						<canvas id="testCanvas" width="1024" height="300" style="border:2px solid #000000;border-radius: 20px;background-color:#FFFFFF"></canvas>
+					</div>
+					<p class="canvas-hint">
+						<b>Overlap test</b> &mdash; every row is one test that the selected bounding volume type needs, evaluated top to bottom.
+						Each row compares the intervals of <span style="color:#4673e5"><b>A</b></span> and <span style="color:#10b981"><b>B</b></span> on one axis.
+						The first axis on which the intervals are disjoint is a <em>separating axis</em>: the test stops there (early exit) and the remaining rows are skipped.
+						Hover a row to see that axis, the projected intervals and their slabs in the scene.
+					</p>
+
+					<table id="compareTable">
+						<thead>
+							<tr>
+								<th>Bounding volume</th>
+								<th>Area BV / object A</th>
+								<th>Area BV / object B</th>
+								<th>BVs overlap?</th>
+								<th>Tests evaluated</th>
+								<th>Max. tests 2D</th>
+								<th>Max. tests 3D</th>
+							</tr>
+						</thead>
+						<tbody></tbody>
+					</table>
+					<p class="canvas-hint">All four types are evaluated live for the current configuration. Click a row to select that type. An area ratio of 1.00 would be a perfect fit.</p>
+				</div>
+			</td>
+			<td>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>BV test</label>
+						<span class="stat-value"><span id="bvStatus">-</span></span>
+
+						<label>Exact test (objects)</label>
+						<span class="stat-value"><span id="exactStatus">-</span></span>
+
+						<label>Result</label>
+						<span class="stat-value"><span id="classification">-</span></span>
+
+						<label>Tests evaluated</label>
+						<span class="stat-value"><span id="testsEvaluated">-</span></span>
+
+						<label>Storage per BV (2D / 3D)</label>
+						<span class="stat-value"><span id="storage">-</span></span>
+
+						<label>Update when rotating</label>
+						<span class="stat-value" style="font-size:0.8rem"><span id="updateCost">-</span></span>
+
+						<label for="typeInput">Bounding volume</label>
+						<select onchange="gui.setType(this.value)" id="typeInput">
+							<option value="sphere">Bounding sphere</option>
+							<option value="aabb" selected="selected">AABB</option>
+							<option value="obb">OBB</option>
+							<option value="kdop">k-DOP</option>
+						</select>
+
+						<label for="kInput">k (k-DOP)</label>
+						<select onchange="gui.k = parseInt(this.value)" id="kInput">
+							<option value="4">4 (= AABB)</option>
+							<option value="6">6</option>
+							<option value="8" selected="selected">8</option>
+							<option value="12">12</option>
+							<option value="16">16</option>
+						</select>
+
+						<label for="obbFitInput">OBB fitting</label>
+						<select onchange="gui.obbFit = this.value" id="obbFitInput">
+							<option value="min" selected="selected">Minimal area</option>
+							<option value="pca">PCA (covariance)</option>
+						</select>
+
+						<label for="shapeInput">Objects</label>
+						<select onchange="gui.restart()" id="shapeInput">
+							<option value="mixed" selected="selected">Stick + random</option>
+							<option value="random">Random convex</option>
+							<option value="elongated">Elongated</option>
+							<option value="triangle">Triangles</option>
+							<option value="round">Round</option>
+						</select>
+
+						<label for="rotateInput">Auto-rotate</label>
+						<input onchange="gui.autoRotate = this.checked" id="rotateInput" type="checkbox">
+
+						<label for="overlayInput">Overlay all BV types</label>
+						<input onchange="gui.overlay = this.checked" id="overlayInput" type="checkbox">
+
+						<div class="full-width">
+							<button onclick="gui.restart()" id="restart">&#9654; New objects</button>
+						</div>
+					</div>
+				</div>
+			</td>
+		</tr>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>Bounding volumes</h2>
+		<p>
+		Testing two complex objects for intersection exactly is expensive. A <b>bounding volume (BV)</b> is a simple shape that completely encloses an object. If the bounding volumes of two objects do not overlap, the objects cannot overlap either, and the expensive exact test can be skipped. Collision detection therefore becomes a two-stage process:
+		</p>
+		<ol>
+			<li><b>BV test:</b> do the bounding volumes overlap? This test is cheap and <em>conservative</em>. It never misses a real collision (no false negatives), but it may report an overlap although the objects are apart (a <em>false positive</em>).</li>
+			<li><b>Exact test:</b> only if the BVs overlap, test the actual geometry (here: two convex polygons with the separating axis theorem; in 3D, typically triangle&ndash;triangle tests, often organized in a bounding volume hierarchy).</li>
+		</ol>
+		<p>
+		A good bounding volume should (i) fit the object <b>tightly</b>, so that false positives are rare, (ii) have a <b>cheap overlap test</b>, (iii) be <b>cheap to update</b> when the object moves or rotates, and (iv) need <b>little memory</b>. These goals contradict each other; the four types below are different trade-offs between them. The example works in 2D, so spheres become circles. The 3D numbers are given alongside.
+		</p>
+
+		<h3>Bounding sphere</h3>
+		<p>
+		A sphere is stored as center $\mathbf c$ and radius $r$. Two spheres overlap if and only if
+		$$\|\mathbf c_A - \mathbf c_B\|^2 \le (r_A + r_B)^2,$$
+		which is a <b>single test</b> and needs no square root. A sphere is rotation invariant: when the object rotates, only the center has to be transformed. It fits elongated or flat objects badly, though (try the "Elongated" objects and compare the area ratios). The example computes the minimal enclosing circle with Welzl's randomized algorithm [Wel91]. Ritter's fast approximation [Rit90] is a common alternative in practice.
+		</p>
+
+		<h3>Axis-aligned bounding box (AABB)</h3>
+		<p>
+		An AABB is stored as minimum and maximum coordinate per world axis. Two AABBs overlap if and only if their intervals overlap on <em>every</em> coordinate axis:
+		$$\min{}_A^i \le \max{}_B^i \;\wedge\; \min{}_B^i \le \max{}_A^i \qquad \text{for } i = x, y\,(,z).$$
+		That is <b>2 interval tests in 2D, 3 in 3D</b>, and the test can stop as soon as one axis separates the boxes. The test is very cheap, but the box must stay aligned with the world axes. When the object rotates, the AABB has to be recomputed (here from all vertices) and its size changes with the orientation. Switch on "Auto-rotate" to watch the area ratio of the AABB change while those of the sphere and the OBB stay constant.
+		</p>
+
+		<h3>Oriented bounding box (OBB)</h3>
+		<p>
+		An OBB is stored as center $\mathbf c$, an orthonormal frame $\mathbf u_1, \mathbf u_2\,(,\mathbf u_3)$ and half extents $h_i$. It rotates with the object, so its fit does not depend on the orientation. Its overlap test uses the <b>separating axis theorem (SAT)</b>: two convex objects are disjoint if and only if there is an axis $\mathbf L$ on which their projections are disjoint. Let box $A$ have center $\mathbf c_A$, axes $\mathbf u^A_i$ and half extents $h^A_i$, and box $B$ correspondingly $\mathbf c_B$, $\mathbf u^B_i$, $h^B_i$. The projection of box $A$ onto $\mathbf L$ is the interval $[\mathbf c_A \cdot \mathbf L - r_A,\ \mathbf c_A \cdot \mathbf L + r_A]$ with the <em>projected radius</em>
+		$$r_A = \sum_i h^A_i \,|\mathbf u^A_i \cdot \mathbf L|,$$
+		i.e. half the length of the box's shadow on $\mathbf L$ (each half extent contributes according to how much its axis points along $\mathbf L$). The radius $r_B = \sum_i h^B_i \,|\mathbf u^B_i \cdot \mathbf L|$ of box $B$ is defined in the same way. The two intervals are disjoint, i.e. the boxes are separated on $\mathbf L$, if the distance of the projected centers exceeds the sum of the projected radii:
+		$$|(\mathbf c_B - \mathbf c_A)\cdot \mathbf L| > r_A + r_B.$$
+		For unit-length $\mathbf L$ these are true distances; for an arbitrary $\mathbf L$ both sides scale by $\|\mathbf L\|$, so the test result is the same and no normalization is needed. For boxes it suffices to test the following candidate axes:
+		</p>
+		<ul>
+			<li><b>2D:</b> the 2 axes of $A$ and the 2 axes of $B$ &mdash; <b>4 tests</b>.</li>
+			<li><b>3D:</b> the 3 face normals of $A$, the 3 face normals of $B$ and the 9 cross products $\mathbf u^A_i \times \mathbf u^B_j$ of their edge directions &mdash; <b>15 tests</b> [GLM96].</li>
+		</ul>
+		<p>
+		So the OBB fits much tighter than the AABB, but its test is more expensive. Fitting is harder too: the example offers the minimal-area rectangle (in 2D, one side is always collinear with a convex hull edge) and the common PCA fit. The PCA fit aligns the box with the eigenvectors of the covariance matrix of the vertices. It is fast but not optimal and depends on how the vertices are distributed; compare both fits with the "Random convex" objects.
+		</p>
+
+		<h3>Discrete oriented polytope (k-DOP)</h3>
+		<p>
+		A k-DOP generalizes the AABB to $k/2$ <b>fixed</b> directions $\mathbf n_1, \dots, \mathbf n_{k/2}$ that are the same for all objects. It stores the interval $[\min_{\mathbf p} \mathbf p\cdot\mathbf n_i,\ \max_{\mathbf p} \mathbf p\cdot\mathbf n_i]$ of the object for each direction, i.e. $k$ numbers. The BV itself is the intersection of the $k$ resulting half-spaces (slabs). Because the directions are shared, the overlap test is just a comparison of $k/2$ interval pairs, with no projection at query time:
+		$$\text{overlap} \iff \min{}_A^i \le \max{}_B^i \;\wedge\; \min{}_B^i \le \max{}_A^i \qquad \text{for } i = 1,\dots,k/2.$$
+		An AABB is the 4-DOP in 2D (6-DOP in 3D). Typical 3D choices are 6-, 14- (adds the 4 cube diagonals), 18- (adds the 6 edge diagonals) and 26-DOPs [KHM98]. A larger $k$ fits tighter but costs more memory and more interval tests. Like the AABB, a k-DOP must be recomputed when the object rotates.
+		</p>
+		<p>
+		In 2D, comparing the $k/2$ intervals is an exact test for the two k-DOPs, since their edge normals are exactly the fixed directions. In 3D, the cross products of edge directions would also be needed, so the $k/2$ interval comparisons are only <em>conservative</em>. They can report overlap for two disjoint k-DOPs, which is acceptable for a BV test.
+		</p>
+
+		<h3>Comparison (3D)</h3>
+		<table class="costs">
+			<tr><th>BV</th><th>Storage</th><th>Overlap test</th><th>Fit</th><th>Update under rotation</th></tr>
+			<tr><td>Sphere</td><td>4 floats</td><td>1 distance test</td><td>poor for elongated objects</td><td>transform center</td></tr>
+			<tr><td>AABB</td><td>6 floats</td><td>3 interval tests</td><td>depends on orientation</td><td>recompute (or enlarge conservatively)</td></tr>
+			<tr><td>OBB</td><td>15 floats (center, 3&times;3 rotation, half extents)</td><td>up to 15 SAT axes</td><td>tight, orientation independent</td><td>rotate frame with object</td></tr>
+			<tr><td>k-DOP</td><td>$k$ floats</td><td>$k/2$ interval tests</td><td>tighter with larger $k$</td><td>recompute (or approximate)</td></tr>
+		</table>
+		<p>
+		A tighter BV means fewer false positives and thus fewer expensive exact tests, but each BV test costs more. Which type pays off depends on the application. In bounding volume hierarchies, the same trade-off appears at every node: AABB trees are cheap to refit for deforming meshes [vdB97], while OBB trees prune very effectively for rigid objects in close proximity [GLM96].
+		</p>
+
+		<h3>References</h3>
+		<ul>
+		<li>[GLM96] Stefan Gottschalk, Ming C. Lin, Dinesh Manocha. OBBTree: A Hierarchical Structure for Rapid Interference Detection. In Proceedings of SIGGRAPH, 1996.</li>
+		<li>[KHM98] James T. Klosowski, Martin Held, Joseph S. B. Mitchell, Henry Sowizral, Karel Zikan. Efficient Collision Detection Using Bounding Volume Hierarchies of k-DOPs. IEEE Transactions on Visualization and Computer Graphics, 1998.</li>
+		<li>[vdB97] Gino van den Bergen. Efficient Collision Detection of Complex Deformable Models using AABB Trees. Journal of Graphics Tools, 1997.</li>
+		<li>[Wel91] Emo Welzl. Smallest Enclosing Disks (Balls and Ellipsoids). In New Results and New Trends in Computer Science, LNCS 555, 1991.</li>
+		<li>[Rit90] Jack Ritter. An Efficient Bounding Sphere. In Graphics Gems, 1990.</li>
+		<li>[Eri04] Christer Ericson. Real-Time Collision Detection. Morgan Kaufmann, 2004.</li>
+		</ul>
+	</div>
+
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	// =====================================================================================
+	//  Overview
+	//  --------
+	//  The example consists of three parts:
+	//   1. Geometry helpers (vectors, convex polygons, the exact polygon-polygon test).
+	//   2. Bounding volume code: fitting a BV to an object (done once in local coordinates),
+	//      transforming it to world space, and the overlap test of two BVs (bvTest).
+	//   3. The GUI class: drawing, user interaction and the main loop.
+	//
+	//  Coordinates: we work directly in canvas pixels, i.e. x points right and y points DOWN.
+	//  A 2D vector is a plain object { x, y }.
+	// =====================================================================================
+
+	// ---- small vector helpers ----
+	function add(a, b)   { return { x: a.x + b.x, y: a.y + b.y }; }
+	function sub(a, b)   { return { x: a.x - b.x, y: a.y - b.y }; }
+	function mul(a, s)   { return { x: a.x * s, y: a.y * s }; }			// scale a vector by a scalar s
+	function dot(a, b)   { return a.x * b.x + a.y * b.y; }
+	function len(a)      { return Math.sqrt(dot(a, a)); }
+	function perp(a)     { return { x: -a.y, y: a.x }; }				// a rotated by 90 degrees (perpendicular vector)
+	function normalize(a) { let l = len(a); return { x: a.x / l, y: a.y / l }; }
+	// rotate p by the angle ang (radians) around the origin: R(ang) * p
+	function rotate(p, ang) { let c = Math.cos(ang), s = Math.sin(ang); return { x: c * p.x - s * p.y, y: s * p.x + c * p.y }; }
+
+	// ---- polygon helpers ----
+
+	// Convex hull of a point set (Andrew's monotone chain algorithm).
+	// The points are sorted by x; then the lower and the upper part of the hull are built
+	// separately. A point is removed again as soon as it would create a "right turn"
+	// (cross product <= 0), since then it cannot lie on the convex hull.
+	// The result is a convex polygon in counter-clockwise order.
+	function convexHull(points)
+	{
+		let p = points.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+		// z-component of (a - o) x (b - o): > 0 for a left turn o -> a -> b
+		let cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+		let lower = [], upper = [];
+		for (let q of p)
+		{
+			while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+			lower.push(q);
+		}
+		for (let i = p.length - 1; i >= 0; i--)
+		{
+			while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p[i]) <= 0) upper.pop();
+			upper.push(p[i]);
+		}
+		// the last point of each chain is the first point of the other one
+		upper.pop(); lower.pop();
+		return lower.concat(upper);
+	}
+
+	// Area of a polygon with the shoelace formula: A = 1/2 |sum_i (x_i y_{i+1} - x_{i+1} y_i)|
+	function polygonArea(poly)
+	{
+		let a = 0;
+		for (let i = 0; i < poly.length; i++)
+		{
+			let p = poly[i], q = poly[(i + 1) % poly.length];
+			a += p.x * q.y - q.x * p.y;
+		}
+		return Math.abs(a) / 2;
+	}
+
+	// Center of mass of a polygon (area-weighted, also derived from the shoelace formula).
+	// The objects are defined relative to their centroid, so they rotate around it.
+	function polygonCentroid(poly)
+	{
+		let a = 0, cx = 0, cy = 0;
+		for (let i = 0; i < poly.length; i++)
+		{
+			let p = poly[i], q = poly[(i + 1) % poly.length];
+			let w = p.x * q.y - q.x * p.y;
+			a += w; cx += (p.x + q.x) * w; cy += (p.y + q.y) * w;
+		}
+		return { x: cx / (3 * a), y: cy / (3 * a) };
+	}
+
+	// Clip a convex polygon against the half-plane dot(p, n) <= d and return the remaining part
+	// (one step of the Sutherland-Hodgman algorithm). Used only to construct the k-DOP polygon
+	// for drawing it - the k-DOP overlap test itself never needs this polygon.
+	function clipHalfPlane(poly, n, d)
+	{
+		let out = [];
+		for (let i = 0; i < poly.length; i++)
+		{
+			let p = poly[i], q = poly[(i + 1) % poly.length];
+			let dp = dot(p, n) - d, dq = dot(q, n) - d;		// signed distances (scaled by |n|) to the boundary line
+			if (dp <= 0) out.push(p);						// p is inside -> keep it
+			if ((dp < 0 && dq > 0) || (dp > 0 && dq < 0))	// edge p-q crosses the line -> add the intersection point
+				out.push(add(p, mul(sub(q, p), dp / (dp - dq))));
+		}
+		return out;
+	}
+
+	// Project a point set onto an axis and return the covered interval [min, max] of dot(p, axis).
+	// This is THE basic operation of all interval / separating axis tests in this example.
+	// (If the axis is not normalized, the interval is scaled by its length - which does not
+	// change whether two intervals overlap.)
+	function projectPoints(pts, axis)
+	{
+		let lo = Infinity, hi = -Infinity;
+		for (let p of pts) { let t = dot(p, axis); lo = Math.min(lo, t); hi = Math.max(hi, t); }
+		return [lo, hi];
+	}
+
+	// p is inside a counter-clockwise convex polygon if it lies to the left of every edge.
+	// (Only used for picking objects with the mouse.)
+	function pointInConvexPolygon(p, poly)
+	{
+		for (let i = 0; i < poly.length; i++)
+		{
+			let a = poly[i], b = poly[(i + 1) % poly.length];
+			if ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x) < 0) return false;	// right of edge a-b -> outside
+		}
+		return true;
+	}
+
+	// EXACT test of two convex polygons with the separating axis theorem (SAT):
+	// two convex polygons are disjoint if and only if one of the edge normals of P or Q is a
+	// separating axis, i.e. the projections of P and Q onto that axis do not overlap.
+	// This is the expensive "narrow phase" test that the bounding volumes are supposed to avoid:
+	// it needs (#edges of P + #edges of Q) axes, and each projection touches all vertices.
+	function polygonsIntersect(P, Q)
+	{
+		for (let poly of [P, Q])
+			for (let i = 0; i < poly.length; i++)
+			{
+				let axis = perp(sub(poly[(i + 1) % poly.length], poly[i]));	// edge normal
+				let [a0, a1] = projectPoints(P, axis), [b0, b1] = projectPoints(Q, axis);
+				if (a1 < b0 || b1 < a0) return false;						// intervals disjoint -> separated
+			}
+		return true;	// no separating axis found -> the polygons intersect
+	}
+
+	// ---- object shapes (convex polygons in local coordinates, centered at their centroid) ----
+
+	// uniformly distributed random point in an ellipse with radii rx, ry
+	// (sqrt makes the distribution uniform in area instead of clustering at the center)
+	function randomInDisc(rx, ry)
+	{
+		let a = Math.random() * 2 * Math.PI, r = Math.sqrt(Math.random());
+		return { x: Math.cos(a) * r * rx, y: Math.sin(a) * r * ry };
+	}
+
+	// Create a random convex polygon of the given kind: generate some points and take their
+	// convex hull. The shapes are chosen to show the strengths and weaknesses of the BV types,
+	// e.g. elongated objects are a bad case for spheres (and for AABBs when rotated).
+	function makeShape(kind)
+	{
+		let pts = [];
+		if (kind === 'elongated')
+			for (let i = 0; i < 10; i++) pts.push(randomInDisc(140, 26));
+		else if (kind === 'triangle')
+		{
+			// three points on a distorted circle, roughly 120 degrees apart
+			let a0 = Math.random() * 2 * Math.PI;
+			for (let i = 0; i < 3; i++)
+			{
+				let a = a0 + i * 2 * Math.PI / 3 + (Math.random() - 0.5) * 1.2;
+				let r = 60 + Math.random() * 50;
+				pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+			}
+		}
+		else if (kind === 'round')
+			// slightly jittered regular 14-gon -> a good case for bounding spheres
+			for (let i = 0; i < 14; i++)
+			{
+				let a = i * 2 * Math.PI / 14, r = 62 + (Math.random() - 0.5) * 8;
+				pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+			}
+		else	// random convex
+			for (let i = 0; i < 9; i++) pts.push(randomInDisc(95, 75));
+
+		let hull = convexHull(pts);
+		if (hull.length < 3 || polygonArea(hull) < 400) return makeShape(kind);	// degenerate -> try again
+		// move the polygon so that its centroid is the origin of the local coordinate system
+		let c = polygonCentroid(hull);
+		return hull.map(p => sub(p, c));
+	}
+
+	// ---- bounding volume fitting (in local coordinates, done once per object) ----
+	//
+	// Sphere and OBB are rigidly attached to the object: they are fitted ONCE in the object's
+	// local coordinate system and later only transformed with the object.
+	// AABB and k-DOP are defined w.r.t. fixed world directions, so they have to be recomputed
+	// from the world-space vertices whenever the object rotates (see Body.kdopW).
+
+	// Minimal enclosing circle with Welzl's randomized incremental algorithm (expected O(n)).
+	// Idea: process the points in random order. If a point lies outside the current circle,
+	// it must lie ON the boundary of the new minimal circle. Then the circle is rebuilt with
+	// this point (and possibly a second and third point) fixed on its boundary.
+	// A circle is stored as { c: center, r: radius }.
+	function minEnclosingCircle(points)
+	{
+		// random shuffle (Fisher-Yates) -> guarantees the expected linear running time
+		let p = points.slice();
+		for (let i = p.length - 1; i > 0; i--) { let j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+		const eps = 1e-7;
+		let inside = (q, c) => len(sub(q, c.c)) <= c.r + eps;
+		// smallest circle through two points: the segment a-b is its diameter
+		let circle2 = (a, b) => ({ c: mul(add(a, b), 0.5), r: len(sub(a, b)) / 2 });
+		// circle through three points (circumcircle of the triangle a, b, c)
+		let circle3 = (a, b, c) =>
+		{
+			let bx = b.x - a.x, by = b.y - a.y, cx = c.x - a.x, cy = c.y - a.y;
+			let d = 2 * (bx * cy - by * cx);
+			if (Math.abs(d) < 1e-12)	// collinear: use the widest pair
+			{
+				let cands = [circle2(a, b), circle2(a, c), circle2(b, c)];
+				return cands.reduce((m, x) => x.r > m.r ? x : m);
+			}
+			// circumcenter relative to a (solution of a 2x2 linear system)
+			let ux = (cy * (bx * bx + by * by) - by * (cx * cx + cy * cy)) / d;
+			let uy = (bx * (cx * cx + cy * cy) - cx * (bx * bx + by * by)) / d;
+			return { c: { x: a.x + ux, y: a.y + uy }, r: Math.sqrt(ux * ux + uy * uy) };
+		};
+		let c = { c: p[0], r: 0 };
+		for (let i = 1; i < p.length; i++)
+		{
+			if (inside(p[i], c)) continue;
+			c = { c: p[i], r: 0 };							// p[i] must be on the boundary
+			for (let j = 0; j < i; j++)
+			{
+				if (inside(p[j], c)) continue;
+				c = circle2(p[i], p[j]);					// p[i] and p[j] on the boundary
+				for (let k = 0; k < j; k++)
+					if (!inside(p[k], c)) c = circle3(p[i], p[j], p[k]);	// three boundary points define the circle
+			}
+		}
+		return c;
+	}
+
+	// Fit a box with the given (unit) axis u (and v = perp(u)) to the points:
+	// project all points onto u and v; the projected intervals give the box extents.
+	// A box is stored as { c: center, u, v: unit axes, hx, hy: half extents along u and v }.
+	function boxForAxis(points, u)
+	{
+		let v = perp(u);
+		let [u0, u1] = projectPoints(points, u), [v0, v1] = projectPoints(points, v);
+		return { c: add(mul(u, (u0 + u1) / 2), mul(v, (v0 + v1) / 2)), u, v, hx: (u1 - u0) / 2, hy: (v1 - v0) / 2 };
+	}
+
+	// OBB fit 1: minimal-area rectangle.
+	// In 2D, one side of the minimal-area enclosing rectangle is always collinear with an edge
+	// of the convex hull (this is the basis of the "rotating calipers" algorithm). So we simply
+	// try every hull edge direction as box axis and keep the box with the smallest area.
+	// (In 3D, the exact minimal-volume OBB is much more expensive to compute.)
+	function obbMinArea(hull)
+	{
+		let best = null;
+		for (let i = 0; i < hull.length; i++)
+		{
+			let b = boxForAxis(hull, normalize(sub(hull[(i + 1) % hull.length], hull[i])));
+			if (!best || b.hx * b.hy < best.hx * best.hy) best = b;
+		}
+		return best;
+	}
+
+	// OBB fit 2: principal component analysis (PCA).
+	// The box axes are the eigenvectors of the covariance matrix
+	//     C = 1/n sum_i (p_i - m)(p_i - m)^T      (m = mean of the points),
+	// i.e. the directions of largest and smallest spread of the points. This is fast and common
+	// in practice (e.g. OBBTree), but not optimal, and the result depends on how the vertices
+	// are distributed over the object.
+	function obbPCA(points)
+	{
+		let m = { x: 0, y: 0 };
+		for (let p of points) m = add(m, p);
+		m = mul(m, 1 / points.length);
+		// entries of the symmetric 2x2 covariance matrix (the factor 1/n does not change the eigenvectors)
+		let cxx = 0, cyy = 0, cxy = 0;
+		for (let p of points)
+		{
+			let d = sub(p, m);
+			cxx += d.x * d.x; cyy += d.y * d.y; cxy += d.x * d.y;
+		}
+		// for a symmetric 2x2 matrix, the angle of the first eigenvector has a closed form
+		let ang = 0.5 * Math.atan2(2 * cxy, cxx - cyy);
+		return boxForAxis(points, { x: Math.cos(ang), y: Math.sin(ang) });
+	}
+
+	// The k/2 fixed directions of a 2D k-DOP, evenly spaced over 180 degrees.
+	// Each direction n_i bounds the object from both sides (min and max), which gives k
+	// half-planes in total. k = 4 gives the directions (1,0) and (0,1), i.e. an AABB.
+	function kdopDirections(k)
+	{
+		let m = k / 2, dirs = [];
+		for (let i = 0; i < m; i++) dirs.push({ x: Math.cos(i * Math.PI / m), y: Math.sin(i * Math.PI / m) });
+		return dirs;
+	}
+
+	// A rigid object: a convex polygon given in local coordinates plus a position (center)
+	// and a rotation angle. Its bounding volumes are fitted once in local coordinates.
+	class Body
+	{
+		constructor(local, center, angle)
+		{
+			this.local = local;			// vertices in local coordinates (centroid = origin)
+			this.center = center;		// world position of the local origin
+			this.angle = angle;			// rotation angle in radians
+			this.area = polygonArea(local);
+			// fitted once - both are rigidly attached to the object
+			this.sphere = minEnclosingCircle(local);
+			this.obb = { min: obbMinArea(local), pca: obbPCA(local) };
+			this.update();
+		}
+
+		// local -> world: x_world = R(angle) * x_local + center
+		toWorld(p)    { return add(this.center, rotate(p, this.angle)); }
+		// world-space vertices (needed for drawing, for the exact test and for AABB / k-DOP)
+		update()      { this.world = this.local.map(p => this.toWorld(p)); }
+
+		// ---- world-space bounding volumes ----
+
+		// Sphere: only the center has to be transformed, the radius is rotation invariant.
+		sphereW()     { return { c: this.toWorld(this.sphere.c), r: this.sphere.r }; }
+
+		// OBB: transform the center and rotate the box axes with the object;
+		// the half extents stay the same. Cost: independent of the number of vertices.
+		obbW(fit)
+		{
+			let o = this.obb[fit];
+			return { c: this.toWorld(o.c), u: rotate(o.u, this.angle), v: rotate(o.v, this.angle), hx: o.hx, hy: o.hy };
+		}
+
+		// k-DOP (and AABB = 4-DOP): for each fixed world direction, the interval [min, max] of
+		// the projected world vertices. Since the directions do not rotate with the object,
+		// this has to be recomputed from ALL vertices after every rotation.
+		kdopW(dirs)   { return dirs.map(d => projectPoints(this.world, d)); }
+	}
+
+	// the four corners of an OBB: c +- hx*u +- hy*v
+	function obbCorners(o)
+	{
+		let U = mul(o.u, o.hx), V = mul(o.v, o.hy);
+		return [sub(sub(o.c, U), V), sub(add(o.c, U), V), add(add(o.c, U), V), add(sub(o.c, U), V)];
+	}
+
+	// The k-DOP as a polygon (only needed for drawing and for computing its area):
+	// the intersection of the k half-planes  min_i <= dot(p, n_i) <= max_i.
+	// Start with a huge square and clip it against every half-plane.
+	function kdopPolygon(dirs, intervals)
+	{
+		let poly = [{ x: -1e5, y: -1e5 }, { x: 1e5, y: -1e5 }, { x: 1e5, y: 1e5 }, { x: -1e5, y: 1e5 }];
+		dirs.forEach((d, i) =>
+		{
+			poly = clipHalfPlane(poly, d, intervals[i][1]);					// dot(p, n_i) <= max_i
+			poly = clipHalfPlane(poly, mul(d, -1), -intervals[i][0]);		// dot(p, n_i) >= min_i
+		});
+		return poly;
+	}
+
+	// Static information about the BV types, shown in the GUI (colors, storage, number of tests).
+	// Storage in 2D / 3D:  sphere: center + radius;  AABB: min + max corner;
+	// OBB: center + rotation (2D: 1 angle, 3D: 3x3 matrix) + half extents;  k-DOP: k interval bounds.
+	const BV_INFO = {
+		sphere: { name: "Bounding sphere", color: "#8b5cf6", storage: () => "3 / 4 floats",
+		          max2D: () => "1", max3D: () => "1",
+		          update: "transform the center only (rotation invariant)" },
+		aabb:   { name: "AABB", color: "#f97316", storage: () => "4 / 6 floats",
+		          max2D: () => "2", max3D: () => "3",
+		          update: "recompute from all vertices" },
+		obb:    { name: "OBB", color: "#0891b2", storage: () => "5 / 15 floats",
+		          max2D: () => "4", max3D: () => "15",
+		          update: "rotate the box axes with the object" },
+		kdop:   { name: "k-DOP", color: "#db2777", storage: k => `${k} / ${k} floats`,
+		          max2D: k => `${k / 2}`, max3D: k => `${k / 2}`,
+		          update: "recompute from all vertices (k/2 projections each)" }
+	};
+
+	// World-space geometry of a bounding volume, for drawing and area computation:
+	// either a circle { circle: true, c, r } or a convex polygon { pts }.
+	function bvGeometry(type, body, opts)
+	{
+		if (type === 'sphere') { let s = body.sphereW(); return { circle: true, c: s.c, r: s.r }; }
+		if (type === 'obb') return { pts: obbCorners(body.obbW(opts.obbFit)) };
+		let dirs = kdopDirections(type === 'aabb' ? 4 : opts.k);		// an AABB is the 4-DOP
+		return { pts: kdopPolygon(dirs, body.kdopW(dirs)) };
+	}
+
+	// area of a BV - used to measure how tightly it fits (BV area / object area)
+	function bvArea(g) { return g.circle ? Math.PI * g.r * g.r : polygonArea(g.pts); }
+
+	// =====================================================================================
+	//  The overlap test of two bounding volumes
+	// =====================================================================================
+	// The test is returned as a list of individual tests ("rows") so that the GUI can show
+	// each of them. All BV types except the sphere use interval tests:
+	//   - project both BVs onto an axis -> two intervals [a0, a1] and [b0, b1]
+	//   - the intervals are disjoint if  a1 < b0  or  b1 < a0  -> the axis separates the BVs
+	// The BVs overlap only if the intervals overlap on ALL tested axes. Therefore the test can
+	// stop at the first separating axis ("early exit"); the remaining rows are then skipped.
+	//
+	// Returns { rows, overlap, evaluated }:
+	//   rows[i] = { name, axis, a: interval of A, b: interval of B, separated, evaluated, decisive }
+	//   overlap   = true if the BVs overlap
+	//   evaluated = number of tests that were actually performed (up to the early exit)
+	function bvTest(type, A, B, opts)
+	{
+		let rows = [];
+		if (type === 'sphere')
+		{
+			// Spheres: a single test. The spheres are disjoint if the distance of the centers is
+			// larger than the sum of the radii. (In practice one compares squared values,
+			// |c_B - c_A|^2 > (r_A + r_B)^2, to avoid the square root; here we need d for display.)
+			let sa = A.sphereW(), sb = B.sphereW();
+			let d = len(sub(sb.c, sa.c));
+			rows.push({ sphere: true, name: "center distance", cA: sa.c, cB: sb.c, rA: sa.r, rB: sb.r, d, separated: d > sa.r + sb.r });
+		}
+		else if (type === 'obb')
+		{
+			// OBBs: separating axis theorem. In 2D, the candidate axes are the two box axes of A
+			// and the two box axes of B (in 3D: 3 + 3 face normals + 9 edge-edge cross products).
+			let oa = A.obbW(opts.obbFit), ob = B.obbW(opts.obbFit);
+			// Interval of an OBB on axis L: centered at dot(c, L) with the projected radius
+			//     r = hx * |dot(u, L)| + hy * |dot(v, L)|
+			// (each half extent contributes as much as its axis points along L).
+			let interval = (o, L) =>
+			{
+				let c = dot(o.c, L), r = o.hx * Math.abs(dot(o.u, L)) + o.hy * Math.abs(dot(o.v, L));
+				return [c - r, c + r];
+			};
+			for (let [name, L] of [["u_A (axis 1 of A)", oa.u], ["v_A (axis 2 of A)", oa.v], ["u_B (axis 1 of B)", ob.u], ["v_B (axis 2 of B)", ob.v]])
+				rows.push({ name, axis: L, a: interval(oa, L), b: interval(ob, L) });
+		}
+		else
+		{
+			// AABB and k-DOP: the axes are the FIXED directions, and the intervals are exactly the
+			// stored BV data (min/max per direction) - no projection is needed at test time.
+			// The AABB test is the k-DOP test with k = 4 (directions x and y).
+			let k = type === 'aabb' ? 4 : opts.k;
+			let dirs = kdopDirections(k);
+			let ia = A.kdopW(dirs), ib = B.kdopW(dirs);
+			dirs.forEach((d, i) =>
+			{
+				let deg = Math.round(i * 180 / (k / 2));
+				let name = type === 'aabb' ? (i === 0 ? "x-axis" : "y-axis") : `n${i + 1} (${deg}°)`;
+				rows.push({ name, axis: d, a: ia[i], b: ib[i] });
+			});
+		}
+
+		// Evaluate the tests in order with early exit.
+		// (For visualization, the intervals of the skipped rows were computed above as well;
+		// a real implementation would of course stop computing at the first separating axis.)
+		let overlap = true, evaluated = 0;
+		for (let r of rows)
+		{
+			if (!r.sphere) r.separated = r.a[1] < r.b[0] || r.b[1] < r.a[0];	// interval test
+			r.evaluated = overlap;					// rows after a separating axis are skipped
+			if (overlap) evaluated++;
+			if (overlap && r.separated) { overlap = false; r.decisive = true; }	// first separating axis -> stop
+		}
+		return { rows, overlap, evaluated };
+	}
+
+	// =====================================================================================
+	//  GUI: user interaction, drawing and the main loop.
+	//  The collision detection itself happens in mainLoop() (bvTest + polygonsIntersect);
+	//  everything else in this class only visualizes the results.
+	// =====================================================================================
+	class GUI
+	{
+		constructor()
+		{
+			// two canvases: the scene (objects + BVs) and the panel listing the individual tests
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.testCanvas = document.getElementById("testCanvas");
+			this.tc = this.testCanvas.getContext("2d");
+
+			// current settings (read from the HTML controls)
+			this.type = document.getElementById("typeInput").value;
+			this.k = parseInt(document.getElementById("kInput").value);
+			this.obbFit = document.getElementById("obbFitInput").value;
+			this.autoRotate = document.getElementById("rotateInput").checked;
+			this.overlay = document.getElementById("overlayInput").checked;
+			this.hoverRow = null;		// index of the test row under the mouse (or null)
+			this.drag = null;			// current drag operation (moving or rotating an object)
+
+			// mouse / touch handling: drag to move, shift/right-drag or wheel to rotate
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			window.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			window.addEventListener("mouseup", () => { this.drag = null; }, false);
+			this.canvas.addEventListener("contextmenu", e => e.preventDefault(), false);
+			this.canvas.addEventListener("wheel", this.wheel.bind(this), { passive: false });
+			this.canvas.addEventListener("touchstart", this.touchStart.bind(this), { passive: false });
+			this.canvas.addEventListener("touchmove", this.touchMove.bind(this), { passive: false });
+			this.canvas.addEventListener("touchend", () => { this.drag = null; }, { passive: false });
+			this.testCanvas.addEventListener("mousemove", this.testMouseMove.bind(this), false);
+			this.testCanvas.addEventListener("mouseleave", () => { this.hoverRow = null; }, false);
+
+			this.buildCompareTable();
+			this.setType(this.type);
+			this.restart();
+			this.mainLoop();
+		}
+
+		// options needed by the BV functions: k of the k-DOP and the OBB fitting method
+		get opts() { return { k: this.k, obbFit: this.obbFit }; }
+
+		// create two new random objects A and B (their BVs are fitted in the Body constructor)
+		restart()
+		{
+			let kind = document.getElementById("shapeInput").value;
+			let W = this.canvas.width, H = this.canvas.height;
+			let shapeA = makeShape(kind === 'mixed' ? 'elongated' : kind);
+			let shapeB = makeShape(kind === 'mixed' ? 'random' : kind);
+			this.A = new Body(shapeA, { x: W * 0.36, y: H * 0.5 }, Math.PI / 5);
+			this.B = new Body(shapeB, { x: W * 0.64, y: H * 0.5 }, Math.random() * Math.PI);
+		}
+
+		// select the BV type to show ('sphere', 'aabb', 'obb' or 'kdop')
+		setType(type)
+		{
+			this.type = type;
+			document.getElementById("typeInput").value = type;
+			document.getElementById("kInput").disabled = type !== 'kdop';
+			document.getElementById("obbFitInput").disabled = type !== 'obb';
+			this.hoverRow = null;
+		}
+
+		// create the rows of the comparison table once; updateStats() only fills in the values
+		buildCompareTable()
+		{
+			let body = document.querySelector("#compareTable tbody");
+			for (let t of ['sphere', 'aabb', 'obb', 'kdop'])
+			{
+				let tr = document.createElement("tr");
+				tr.id = "cmp_" + t;
+				tr.innerHTML = `<td><span class="swatch" style="background:${BV_INFO[t].color}"></span><span class="nm"></span></td>` +
+					`<td class="ra"></td><td class="rb"></td><td class="ov"></td><td class="ev"></td><td class="m2"></td><td class="m3"></td>`;
+				tr.addEventListener("click", () => this.setType(t));
+				body.appendChild(tr);
+			}
+		}
+
+		// ---- main loop ----
+
+		// Called once per frame:
+		//  1. move the objects (auto-rotation; dragging changes center/angle directly)
+		//  2. BV test (cheap, conservative)
+		//  3. exact test of the objects (expensive). In a real collision detection, this test is
+		//     ONLY performed if the BVs overlap. We always run it here, so that the GUI can show
+		//     whether a BV overlap is a real collision or a false positive.
+		//  4. draw everything
+		mainLoop()
+		{
+			if (this.autoRotate)
+			{
+				this.A.angle += 0.004;
+				this.B.angle -= 0.0065;
+			}
+			this.A.update();
+			this.B.update();
+
+			let opts = this.opts;
+			this.result = bvTest(this.type, this.A, this.B, opts);				// stage 1: BV test
+			this.exact = polygonsIntersect(this.A.world, this.B.world);			// stage 2: exact test
+
+			this.drawScene();
+			this.drawTests();
+			this.updateStats();
+
+			window.requestAnimationFrame(this.mainLoop.bind(this));
+		}
+
+		// Update the HTML statistics and the comparison table.
+		// Classification of the result:
+		//   BVs disjoint                      -> no collision, exact test not needed (early out)
+		//   BVs overlap, objects collide      -> collision
+		//   BVs overlap, objects do not       -> false positive (the BV was not tight enough)
+		// A false negative (BVs disjoint, but objects collide) is impossible, since every BV
+		// completely contains its object.
+		updateStats()
+		{
+			let r = this.result, info = BV_INFO[this.type];
+			let set = (id, text, color) => { let e = document.getElementById(id); e.textContent = text; e.style.color = color || ""; };
+
+			set("bvStatus", r.overlap ? "BVs overlap" : "BVs disjoint", r.overlap ? "#d97706" : "#059669");
+			if (r.overlap)
+				set("exactStatus", this.exact ? "Collision" : "No collision", this.exact ? "#e61e1e" : "#059669");
+			else
+				set("exactStatus", "not needed", "#6b7280");
+			let cls = !r.overlap ? "No collision (early out)" : this.exact ? "Collision" : "False positive";
+			set("classification", cls, !r.overlap ? "#059669" : this.exact ? "#e61e1e" : "#d97706");
+			set("testsEvaluated", `${r.evaluated} of ${r.rows.length}`);
+			set("storage", info.storage(this.k));
+			set("updateCost", info.update);
+
+			// live comparison of all types: run the BV test of every type on the current configuration
+			// and measure the tightness as (area of the BV) / (area of the object) >= 1
+			let opts = this.opts;
+			for (let t of ['sphere', 'aabb', 'obb', 'kdop'])
+			{
+				let tr = document.getElementById("cmp_" + t);
+				let res = t === this.type ? r : bvTest(t, this.A, this.B, opts);
+				let ratioA = bvArea(bvGeometry(t, this.A, opts)) / this.A.area;
+				let ratioB = bvArea(bvGeometry(t, this.B, opts)) / this.B.area;
+				tr.className = t === this.type ? "selected" : "";
+				tr.querySelector(".nm").textContent = t === 'kdop' ? `${this.k}-DOP` : t === 'obb' ? `OBB (${this.obbFit === 'min' ? 'min. area' : 'PCA'})` : BV_INFO[t].name;
+				tr.querySelector(".ra").textContent = ratioA.toFixed(2);
+				tr.querySelector(".rb").textContent = ratioB.toFixed(2);
+				let ov = tr.querySelector(".ov");
+				ov.textContent = res.overlap ? (this.exact ? "yes" : "yes (false positive)") : "no";
+				ov.style.color = res.overlap ? (this.exact ? "#e61e1e" : "#d97706") : "#059669";
+				tr.querySelector(".ev").textContent = res.evaluated;
+				tr.querySelector(".m2").textContent = BV_INFO[t].max2D(this.k);
+				tr.querySelector(".m3").textContent = BV_INFO[t].max3D(this.k);
+			}
+		}
+
+		// ---- scene ----
+
+		// Draw the scene: grid, (optionally) the other BV types, the selected BVs, the objects,
+		// the visualization of one test (axis + intervals or sphere distance) and a status header.
+		drawScene()
+		{
+			let c = this.c, W = this.canvas.width, H = this.canvas.height;
+			let opts = this.opts, info = BV_INFO[this.type];
+			c.clearRect(0, 0, W, H);
+			c.fillStyle = "#ffffff";
+			c.fillRect(0, 0, W, H);
+
+			// light grid + world frame (the axes AABBs are aligned with)
+			c.strokeStyle = "#f1f3f7";
+			c.lineWidth = 1;
+			for (let x = 0; x <= W; x += 40) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); }
+			for (let y = 0; y <= H; y += 40) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+			// (canvas coordinates: y points down)
+			this.drawArrow(c, { x: 22, y: H - 72 }, { x: 72, y: H - 72 }, "#6b7280", "x");
+			this.drawArrow(c, { x: 22, y: H - 72 }, { x: 22, y: H - 22 }, "#6b7280", "y");
+
+			// other BV types (faint, dashed) for comparison
+			if (this.overlay)
+				for (let t of ['sphere', 'aabb', 'obb', 'kdop'])
+				{
+					if (t === this.type) continue;
+					c.save();
+					c.strokeStyle = BV_INFO[t].color;
+					c.globalAlpha = 0.6;
+					c.lineWidth = 1.2;
+					c.setLineDash([5, 4]);
+					for (let b of [this.A, this.B]) { this.pathGeometry(c, bvGeometry(t, b, opts)); c.stroke(); }
+					c.restore();
+				}
+
+			// selected BVs: fill
+			let geoms = [bvGeometry(this.type, this.A, opts), bvGeometry(this.type, this.B, opts)];
+			for (let g of geoms)
+			{
+				this.pathGeometry(c, g);
+				c.fillStyle = this.result.overlap ? "rgba(245,158,11,0.16)" : this.hexAlpha(info.color, 0.10);
+				c.fill();
+			}
+
+			// the objects themselves
+			[[this.A, "rgba(70,115,229,0.45)", "#4673e5", "A"], [this.B, "rgba(16,185,129,0.45)", "#10b981", "B"]].forEach(([b, fill, stroke, label]) =>
+			{
+				c.beginPath();
+				b.world.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y));
+				c.closePath();
+				c.fillStyle = this.exact ? "rgba(230,30,30,0.45)" : fill;
+				c.fill();
+				c.strokeStyle = this.exact ? "#e61e1e" : stroke;
+				c.lineWidth = 2;
+				c.stroke();
+				c.fillStyle = "#111827";
+				c.font = "bold 19px Inter, sans-serif";
+				c.textAlign = "center";
+				c.fillText(label, b.center.x, b.center.y + 5);
+				c.textAlign = "left";
+			});
+
+			// selected BVs: outline
+			for (let g of geoms)
+			{
+				this.pathGeometry(c, g);
+				c.strokeStyle = info.color;
+				c.lineWidth = 2.5;
+				c.stroke();
+			}
+			if (this.type === 'obb')	// draw the box axes u, v
+				for (let b of [this.A, this.B])
+				{
+					let o = b.obbW(this.obbFit);
+					this.drawArrow(c, o.c, add(o.c, mul(o.u, Math.max(o.hx, 25))), info.color, "u");
+					this.drawArrow(c, o.c, add(o.c, mul(o.v, Math.max(o.hy, 25))), info.color, "v");
+				}
+
+			// visualize one test: the hovered row, otherwise the separating axis that ended the test
+			let rows = this.result.rows;
+			let row = this.hoverRow !== null && rows[this.hoverRow] ? rows[this.hoverRow] : rows.find(r => r.decisive || r.sphere);
+			if (row)
+			{
+				if (row.sphere) this.drawSphereTest(row);
+				else this.drawAxisTest(row);
+			}
+
+			// header
+			c.font = "bold 19px Inter, sans-serif";
+			c.fillStyle = info.color;
+			c.fillText(this.type === 'kdop' ? `${this.k}-DOP` : info.name, 12, 26);
+			c.font = "17px Inter, sans-serif";
+			let r = this.result;
+			c.fillStyle = r.overlap ? "#d97706" : "#059669";
+			c.fillText(r.overlap ? `1. BV test: overlap on all ${r.rows.length} test(s)  →  exact test required`
+			                     : `1. BV test: separated by test ${r.evaluated} of ${r.rows.length}  →  stop, objects cannot collide`, 12, 50);
+			if (r.overlap)
+			{
+				c.fillStyle = this.exact ? "#e61e1e" : "#d97706";
+				c.fillText(this.exact ? "2. Exact test: objects collide" : "2. Exact test: objects do NOT collide  →  the BV test was a false positive", 12, 72);
+			}
+			else
+			{
+				c.fillStyle = "#9ca3af";
+				c.fillText("2. Exact test: skipped", 12, 72);
+			}
+
+			c.strokeStyle = "#999999";
+			c.lineWidth = 1;
+			c.strokeRect(0, 0, W, H);
+		}
+
+		// create a canvas path for a BV geometry (circle or polygon, see bvGeometry)
+		pathGeometry(c, g)
+		{
+			c.beginPath();
+			if (g.circle) c.arc(g.c.x, g.c.y, g.r, 0, 2 * Math.PI);
+			else { g.pts.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y)); c.closePath(); }
+		}
+
+		// "#rrggbb" -> "rgba(r,g,b,a)"
+		hexAlpha(hex, a)
+		{
+			let n = parseInt(hex.slice(1), 16);
+			return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+		}
+
+		// arrow from 'from' to 'to' with an optional label at its tip
+		drawArrow(c, from, to, color, label)
+		{
+			let d = normalize(sub(to, from)), n = perp(d);
+			c.save();
+			c.strokeStyle = color; c.fillStyle = color; c.lineWidth = 1.8;
+			c.beginPath(); c.moveTo(from.x, from.y); c.lineTo(to.x, to.y); c.stroke();
+			let h1 = add(sub(to, mul(d, 8)), mul(n, 4)), h2 = sub(sub(to, mul(d, 8)), mul(n, 4));
+			c.beginPath(); c.moveTo(to.x, to.y); c.lineTo(h1.x, h1.y); c.lineTo(h2.x, h2.y); c.closePath(); c.fill();
+			if (label)
+			{
+				c.font = "italic 16px Inter, sans-serif";
+				let p = add(to, mul(d, 9));
+				c.textAlign = "center";
+				c.fillText(label, p.x, p.y + 4);
+				c.textAlign = "left";
+			}
+			c.restore();
+		}
+
+		// Visualize the sphere test in the scene: the line between the centers (length d),
+		// the radius r_A measured from c_A towards B and r_B measured from c_B towards A.
+		// If the two radius segments do not meet (d > r_A + r_B), the remaining gap is drawn in red.
+		drawSphereTest(row)
+		{
+			let c = this.c;
+			let d = normalize(sub(row.cB, row.cA));		// unit direction from c_A to c_B
+			let endA = add(row.cA, mul(d, row.rA)), endB = sub(row.cB, mul(d, row.rB));
+			c.save();
+			c.setLineDash([4, 4]);
+			c.strokeStyle = "#374151"; c.lineWidth = 1.5;
+			c.beginPath(); c.moveTo(row.cA.x, row.cA.y); c.lineTo(row.cB.x, row.cB.y); c.stroke();
+			c.setLineDash([]);
+			c.lineWidth = 4;
+			c.strokeStyle = "#4673e5";
+			c.beginPath(); c.moveTo(row.cA.x, row.cA.y); c.lineTo(endA.x, endA.y); c.stroke();
+			c.strokeStyle = "#10b981";
+			c.beginPath(); c.moveTo(row.cB.x, row.cB.y); c.lineTo(endB.x, endB.y); c.stroke();
+			if (row.separated)
+			{
+				c.strokeStyle = "#e61e1e"; c.lineWidth = 6;
+				c.beginPath(); c.moveTo(endA.x, endA.y); c.lineTo(endB.x, endB.y); c.stroke();
+			}
+			for (let p of [row.cA, row.cB]) { c.fillStyle = "#111827"; c.beginPath(); c.arc(p.x, p.y, 4, 0, 2 * Math.PI); c.fill(); }
+			// label above the connecting line, clear of both circles
+			let nrm = perp(d);
+			if (nrm.y > 0) nrm = mul(nrm, -1);
+			let mid = add(mul(add(row.cA, row.cB), 0.5), mul(nrm, Math.max(row.rA, row.rB) + 22));
+			c.font = "17px Inter, sans-serif";
+			c.fillStyle = "#111827";
+			c.textAlign = "center";
+			c.fillText(`d = ${row.d.toFixed(0)}   vs.   r_A + r_B = ${(row.rA + row.rB).toFixed(0)}`, mid.x, mid.y);
+			c.textAlign = "left";
+			c.restore();
+		}
+
+		// Visualize one interval test in the scene:
+		//  - the axis as a line beside the objects, with the intervals of A and B on it,
+		//  - the "slab" of each BV: all points p with min <= dot(p, axis) <= max, i.e. the region
+		//    between two lines perpendicular to the axis. The BV lies completely inside its slab.
+		//  - if the intervals are disjoint, the gap between the slabs (red) - a line in this gap
+		//    separates the two BVs.
+		drawAxisTest(row)
+		{
+			let c = this.c, W = this.canvas.width, H = this.canvas.height;
+			let a = row.axis, n = perp(a);		// a: unit axis, n: perpendicular direction
+			const FAR = 3000;					// "infinitely" long lines (clipped by the canvas)
+			// Points in the scene are written as p = t * a + s * n (t: coordinate along the axis,
+			// s: coordinate across it). line(t, s0, s1) returns the segment with fixed t from s0 to s1,
+			// i.e. a piece of the line {dot(p, a) = t} perpendicular to the axis.
+			let line = (t, s0, s1) => [add(mul(a, t), mul(n, s0)), add(mul(a, t), mul(n, s1))];
+
+			c.save();
+			// gap between the intervals (if separating)
+			if (row.separated)
+			{
+				let g0 = Math.min(row.a[1], row.b[1]), g1 = Math.max(row.a[0], row.b[0]);
+				let [p0, p1] = line(g0, -FAR, FAR), [q0, q1] = line(g1, -FAR, FAR);
+				c.fillStyle = "rgba(230,30,30,0.12)";
+				c.beginPath(); c.moveTo(p0.x, p0.y); c.lineTo(p1.x, p1.y); c.lineTo(q1.x, q1.y); c.lineTo(q0.x, q0.y); c.closePath(); c.fill();
+			}
+			// slab boundaries of A and B
+			c.setLineDash([6, 5]);
+			c.lineWidth = 1.3;
+			for (let [iv, col] of [[row.a, "#4673e5"], [row.b, "#10b981"]])
+				for (let t of iv)
+				{
+					let [p0, p1] = line(t, -FAR, FAR);
+					c.strokeStyle = col;
+					c.beginPath(); c.moveTo(p0.x, p0.y); c.lineTo(p1.x, p1.y); c.stroke();
+				}
+			c.setLineDash([]);
+
+			// Place the axis line beside both objects, inside the canvas: try some offsets s just
+			// outside the range [s0, s1] covered by the objects across the axis.
+			let pts = this.A.world.concat(this.B.world);
+			let [s0, s1] = projectPoints(pts, n);
+			let tMid = (Math.min(row.a[0], row.b[0]) + Math.max(row.a[1], row.b[1])) / 2;
+			let inside = s => { let p = add(mul(a, tMid), mul(n, s)); return p.x > 30 && p.x < W - 30 && p.y > 80 && p.y < H - 30; };
+			let sLine = [s1 + 70, s0 - 70, s1 + 40, s0 - 40].find(inside);
+			if (sLine === undefined) sLine = s1 + 70;
+
+			// the axis line and the two intervals on it (A slightly above, B slightly below)
+			let [l0] = line(tMid - FAR, sLine, sLine), [l1] = line(tMid + FAR, sLine, sLine);
+			c.strokeStyle = "#374151"; c.lineWidth = 1.5;
+			c.beginPath(); c.moveTo(l0.x, l0.y); c.lineTo(l1.x, l1.y); c.stroke();
+			for (let [iv, col, off] of [[row.a, "#4673e5", -5], [row.b, "#10b981", 5]])
+			{
+				let [p] = line(iv[0], sLine + off, 0), [q] = line(iv[1], sLine + off, 0);
+				c.strokeStyle = col; c.lineWidth = 6; c.lineCap = "round";
+				c.beginPath(); c.moveTo(p.x, p.y); c.lineTo(q.x, q.y); c.stroke();
+			}
+			// Label: an arrow showing the axis direction plus text, placed on the axis line next to the
+			// intervals. Try several positions along the line (behind / in front of the intervals,
+			// further away) and take the first one whose text box lies completely inside the canvas
+			// and below the status header. If none fits, clamp the text box into the canvas.
+			c.font = "bold 17px Inter, sans-serif";
+			let verdict = !row.evaluated ? "  (not evaluated: early exit)" : row.separated ? "  → separating axis" : "  → overlap";
+			let text = row.name + verdict;
+			let textW = c.measureText(text).width;
+			const TOP = 90, MARGIN = 8, TEXT_H = 20;
+			let textBox = p => ({ x: p.x + 16, y: p.y - TEXT_H / 2 });		// top-left corner of the text
+			let fits = p =>
+			{
+				let b = textBox(p);
+				return b.x >= MARGIN && b.x + textW <= W - MARGIN && b.y >= TOP && b.y + TEXT_H <= H - MARGIN;
+			};
+			let hi = Math.max(row.a[1], row.b[1]), lo = Math.min(row.a[0], row.b[0]);
+			let candidates = [hi + 30, lo - 30, hi + 120, lo - 120, hi + 250, lo - 250].map(t => add(mul(a, t), mul(n, sLine)));
+			let labelPos = candidates.find(fits) || candidates[0];
+			let box = textBox(labelPos);
+			box.x = Math.min(Math.max(box.x, MARGIN), W - MARGIN - textW);
+			box.y = Math.min(Math.max(box.y, TOP), H - MARGIN - TEXT_H);
+
+			this.drawArrow(c, add(labelPos, mul(a, -20)), add(labelPos, mul(a, 10)), "#374151", null);
+			// white background so the text stays readable on top of slabs and grid lines
+			c.fillStyle = "rgba(255,255,255,0.85)";
+			c.fillRect(box.x - 4, box.y, textW + 8, TEXT_H);
+			c.fillStyle = "#111827";
+			c.fillText(text, box.x, box.y + 15);
+			c.restore();
+		}
+
+		// ---- test panel ----
+
+		// pixel layout of the test panel: one row per test, columns for name, intervals and status
+		testLayout()
+		{
+			return { top: 46, rowH: 56, labelW: 250, lineX0: 280, lineX1: 745, statusX: 768 };
+		}
+
+		// Draw the test panel: one row per individual test of the selected BV type (see bvTest),
+		// in the order in which they are evaluated, with its result. Rows after the first
+		// separating axis are greyed out (skipped by the early exit).
+		drawTests()
+		{
+			let rows = this.result.rows, L = this.testLayout();
+			let neededH = L.top + rows.length * L.rowH + 82;
+			if (this.testCanvas.height !== neededH) this.testCanvas.height = neededH;
+			let c = this.tc, W = this.testCanvas.width, H = this.testCanvas.height;
+			let info = BV_INFO[this.type];
+
+			c.clearRect(0, 0, W, H);
+			c.fillStyle = "#ffffff";
+			c.fillRect(0, 0, W, H);
+			c.font = "bold 18px Inter, sans-serif";
+			c.fillStyle = info.color;
+			let title = {
+				sphere: "Bounding spheres: 1 test — compare the center distance with the sum of the radii",
+				aabb:   "AABBs: 2 interval tests on the world axes (3 in 3D)",
+				obb:    "OBBs: separating axis test with the 2 axes of each box = 4 axes (15 in 3D)",
+				kdop:   `${this.k}-DOPs: ${this.k / 2} interval tests on the fixed directions (stored, no projection needed)`
+			}[this.type];
+			c.fillText(title, 14, 28);
+
+			// common scale for all axis rows, so interval lengths are comparable
+			let span = 1;
+			for (let r of rows)
+				if (!r.sphere) span = Math.max(span, Math.max(r.a[1], r.b[1]) - Math.min(r.a[0], r.b[0]));
+			let scale = (L.lineX1 - L.lineX0) / (span * 1.1);
+
+			rows.forEach((r, i) =>
+			{
+				let y = L.top + i * L.rowH;
+				if (i === this.hoverRow) { c.fillStyle = "#f3f4f6"; c.fillRect(2, y, W - 4, L.rowH); }
+				c.globalAlpha = r.evaluated ? 1 : 0.35;
+
+				// index + name + direction icon
+				c.fillStyle = "#374151";
+				c.font = "bold 17px Inter, sans-serif";
+				c.fillText(`${i + 1}.`, 14, y + 31);
+				c.font = "17px Inter, sans-serif";
+				c.fillText(r.name, 36, y + 31);
+				if (!r.sphere)
+				{
+					let ic = { x: L.labelW - 10, y: y + 27 };
+					c.strokeStyle = "#d1d5db"; c.lineWidth = 1;
+					c.beginPath(); c.arc(ic.x, ic.y, 14, 0, 2 * Math.PI); c.stroke();
+					this.drawArrow(c, sub(ic, mul(r.axis, 11)), add(ic, mul(r.axis, 11)), "#374151", null);
+				}
+
+				if (r.sphere) this.drawSphereRow(c, r, y, L);
+				else this.drawIntervalRow(c, r, y, L, scale);
+
+				// status
+				c.font = "bold 17px Inter, sans-serif";
+				if (!r.evaluated) { c.fillStyle = "#6b7280"; c.fillText("skipped (early exit)", L.statusX, y + 31); }
+				else if (r.separated) { c.fillStyle = "#e61e1e"; c.fillText("disjoint → separated, stop", L.statusX, y + 31); }
+				else { c.fillStyle = "#d97706"; c.fillText(i === rows.length - 1 ? "overlap" : "overlap → next test", L.statusX, y + 31); }
+				c.globalAlpha = 1;
+
+				c.strokeStyle = "#eef0f4"; c.lineWidth = 1;
+				c.beginPath(); c.moveTo(0, y + L.rowH); c.lineTo(W, y + L.rowH); c.stroke();
+			});
+
+			// summary
+			let r = this.result, y = L.top + rows.length * L.rowH + 30;
+			c.font = "bold 17px Inter, sans-serif";
+			if (!r.overlap)
+			{
+				c.fillStyle = "#059669";
+				c.fillText(`Result: ${rows[0].sphere ? "spheres separated" : "separating axis found"} after ${r.evaluated} of ${rows.length} test(s) → the BVs are disjoint,`, 14, y);
+				c.fillText("so the objects cannot collide. No exact test needed.", 14, y + 24);
+			}
+			else
+			{
+				c.fillStyle = "#d97706";
+				c.fillText(`Result: all ${rows.length} test(s) report overlap → the BVs overlap → run the exact test on the objects.`, 14, y);
+				c.fillStyle = this.exact ? "#e61e1e" : "#d97706";
+				c.fillText(this.exact ? "Exact test: the objects collide."
+				                      : "Exact test: no collision → false positive of the BV test (a tighter BV may avoid it).", 14, y + 24);
+			}
+
+			c.strokeStyle = "#999999";
+			c.lineWidth = 1;
+			c.strokeRect(0, 0, W, H);
+		}
+
+		// One interval test as a 1D picture: the intervals of A (top) and B (bottom) on the axis.
+		// Overlapping part -> amber, gap between disjoint intervals -> red.
+		drawIntervalRow(c, r, y, L, scale)
+		{
+			let lo = Math.min(r.a[0], r.b[0]), hi = Math.max(r.a[1], r.b[1]);
+			let cx = (L.lineX0 + L.lineX1) / 2, mid = (lo + hi) / 2;
+			let X = t => cx + (t - mid) * scale;
+
+			// overlap region or gap
+			let o0 = Math.max(r.a[0], r.b[0]), o1 = Math.min(r.a[1], r.b[1]);
+			if (o0 <= o1) { c.fillStyle = "rgba(245,158,11,0.25)"; c.fillRect(X(o0), y + 8, X(o1) - X(o0), 38); }
+			else { c.fillStyle = "rgba(230,30,30,0.18)"; c.fillRect(X(o1), y + 8, X(o0) - X(o1), 38); }
+
+			c.strokeStyle = "#9ca3af"; c.lineWidth = 1;
+			c.beginPath(); c.moveTo(L.lineX0, y + 44); c.lineTo(L.lineX1, y + 44); c.stroke();
+			for (let [iv, col, yy, lab] of [[r.a, "#4673e5", y + 16, "A"], [r.b, "#10b981", y + 31, "B"]])
+			{
+				c.fillStyle = col;
+				c.fillRect(X(iv[0]), yy - 4, Math.max(X(iv[1]) - X(iv[0]), 2), 8);
+				c.font = "bold 14px Inter, sans-serif";
+				c.fillText(lab, X(iv[0]) - 13, yy + 4);
+			}
+		}
+
+		// The sphere test as bars: the center distance d (top) vs. r_A + r_B (bottom).
+		// The spheres overlap if the bottom bar is at least as long as the top bar.
+		drawSphereRow(c, r, y, L)
+		{
+			let maxV = Math.max(r.d, r.rA + r.rB) * 1.6;	// leave room for the labels
+			let X = v => L.lineX0 + v / maxV * (L.lineX1 - L.lineX0);
+			c.fillStyle = "#374151";
+			c.fillRect(X(0), y + 12, X(r.d) - X(0), 8);
+			c.fillStyle = "#4673e5";
+			c.fillRect(X(0), y + 28, X(r.rA) - X(0), 8);
+			c.fillStyle = "#10b981";
+			c.fillRect(X(r.rA), y + 28, X(r.rA + r.rB) - X(r.rA), 8);
+			c.font = "15px Inter, sans-serif";
+			c.fillStyle = "#374151";
+			c.fillText(`d = ‖c_A − c_B‖ = ${r.d.toFixed(0)}`, X(r.d) + 6, y + 20);
+			c.fillText(`r_A + r_B = ${(r.rA + r.rB).toFixed(0)}`, X(r.rA + r.rB) + 6, y + 36);
+		}
+
+		// remember which test row is under the mouse -> drawScene() shows that test in the scene
+		testMouseMove(event)
+		{
+			let p = this.getMousePos(this.testCanvas, event), L = this.testLayout();
+			let i = Math.floor((p.y - L.top) / L.rowH);
+			this.hoverRow = (i >= 0 && i < this.result.rows.length) ? i : null;
+		}
+
+		// ---- interaction ----
+
+		// mouse position in canvas pixels (the canvas may be scaled by CSS)
+		getMousePos(canvas, event)
+		{
+			const rect = canvas.getBoundingClientRect();
+			return {
+				x: (event.clientX - rect.left) * canvas.width / rect.width,
+				y: (event.clientY - rect.top) * canvas.height / rect.height
+			};
+		}
+
+		// object under the mouse (inside the polygon or its bounding circle, for easier grabbing)
+		pickBody(pos)
+		{
+			for (let b of [this.B, this.A])
+				if (pointInConvexPolygon(pos, b.world) || len(sub(pos, b.sphereW().c)) < b.sphere.r)
+					return b;
+			return null;
+		}
+
+		// start dragging: left button moves the object, right button or Shift rotates it
+		mouseDown(event)
+		{
+			let pos = this.getMousePos(this.canvas, event);
+			let body = this.pickBody(pos);
+			if (!body) return;
+			event.preventDefault && event.preventDefault();
+			let rotateMode = event.button === 2 || event.shiftKey;
+			this.drag = {
+				body, rotate: rotateMode,
+				offset: sub(body.center, pos),
+				startAngle: body.angle,
+				startMouse: Math.atan2(pos.y - body.center.y, pos.x - body.center.x)
+			};
+		}
+
+		mouseMove(event)
+		{
+			if (!this.drag) return;
+			let pos = this.getMousePos(this.canvas, event), b = this.drag.body;
+			if (this.drag.rotate)	// rotate by the angle the mouse has swept around the object center
+				b.angle = this.drag.startAngle + Math.atan2(pos.y - b.center.y, pos.x - b.center.x) - this.drag.startMouse;
+			else
+			{
+				let p = add(pos, this.drag.offset);
+				b.center = { x: Math.min(Math.max(p.x, 0), this.canvas.width), y: Math.min(Math.max(p.y, 0), this.canvas.height) };
+			}
+		}
+
+		wheel(event)
+		{
+			let body = this.pickBody(this.getMousePos(this.canvas, event));
+			if (!body) return;		// let the page scroll when not over an object
+			event.preventDefault();
+			body.angle += event.deltaY * 0.0015;
+		}
+
+		touchStart(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseDown({ clientX: event.touches[0].clientX, clientY: event.touches[0].clientY, button: 0, shiftKey: false });
+		}
+
+		touchMove(event)
+		{
+			event.preventDefault();
+			if (event.touches.length === 1)
+				this.mouseMove({ clientX: event.touches[0].clientX, clientY: event.touches[0].clientY });
+		}
+	}
+
+	gui = new GUI();
+</script>
+
+</body>
+</html>
