@@ -34,9 +34,23 @@
 			<td>
 				<div class="card sim-panel">
 					<div class="sim-canvas-wrap">
-						<canvas id="simCanvas" width="1024" height="960" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
+						<canvas id="simCanvas" width="1024" height="720" style="border:2px solid #000000;border-radius: 20px;background-color:#EEEEEE">Your browser does not support the HTML5 canvas tag.</canvas>
 					</div>
-					<p class="canvas-hint">Drag either mesh with the mouse; colliding triangles turn red, tested-but-clear triangles turn yellow.</p>
+					<p class="canvas-hint">Drag either mesh with the mouse; colliding triangles turn red, tested-but-clear triangles turn yellow. Hover a triangle to find its leaf in the trees below.</p>
+					<div class="sim-canvas-wrap" style="margin-top:10px">
+						<canvas id="treeCanvas" width="1024" height="520" style="border:2px solid #000000;border-radius: 20px;background-color:#FFFFFF">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+					<p class="canvas-hint" style="line-height:1.9">
+						<b>Tree view</b> &mdash; tree A grows down from the top, tree B grows up from the bottom, so their leaves face each other.
+						Circles are internal nodes, squares are leaves (one triangle each). Hover a node to see its box and triangles in the scene.<br>
+						<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#e2e8f0;border:1px solid #94a3b8;vertical-align:middle"></span> not reached &nbsp;
+						<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#4673e5;vertical-align:middle"></span> boxes overlapped &rarr; descended &nbsp;
+						<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#f59e0b;vertical-align:middle"></span> pruned &nbsp;
+						<span style="display:inline-block;width:11px;height:11px;background:#facc15;border:1px solid #ca8a04;vertical-align:middle"></span> triangle tested, no overlap &nbsp;
+						<span style="display:inline-block;width:11px;height:11px;background:#e61e1e;vertical-align:middle"></span> triangle collides<br>
+						Lines between the trees are leaf&ndash;leaf triangle tests (<span style="color:#e61e1e">red</span> = hit, <span style="color:#ca8a04">yellow</span> = miss).
+						In step-by-step mode the thick line marks the node pair just processed, and dashed lines are the pairs still waiting on the stack.
+					</p>
 				</div>
 			</td>
 			<td>
@@ -131,6 +145,9 @@
 			</ol>
 			<p>
 			Each triangle is colored by what happened to it: <span style="color:#e61e1e">red</span> means it was involved in a detected collision, <span style="color:#ca8a04">yellow</span> means it was tested exactly but found not to overlap, and its normal mesh color means the traversal never even reached it &mdash; typically the large majority of triangles, even for meshes with dozens of triangles each. Toggle "Show internal boxes" to also see which node boxes were pruned (amber) versus descended into (blue) during the same pass.
+			</p>
+			<p>
+			The tree view below the scene shows the same information on the two hierarchies themselves. Tree $A$ hangs down from the top, tree $B$ grows up from the bottom, and every node is colored by what the traversal did with it. Typically, whole branches of both trees stay gray or turn amber high up, and only a few narrow paths reach down to the leaves. Each line between the two trees is one exact triangle test. Their small number, compared to the $n_A \cdot n_B$ lines brute force would need, is exactly the saving the BVH buys. In step-by-step mode, the dashed lines are the node pairs still waiting on the traversal stack. You can watch the walk over <em>pairs</em> of nodes move down both trees together, always splitting the node with the larger box.
 			</p>
 
 			<h3>Refitting a rigid mesh needs no rebuilding</h3>
@@ -272,9 +289,40 @@
 			let mid = Math.floor(sorted.length / 2);
 			let left = build(sorted.slice(0, mid), depth + 1);
 			let right = build(sorted.slice(mid), depth + 1);
-			return { id: counter.n++, leaf: false, left, right, depth, leafCount: left.leafCount + right.leafCount };
+			let node = { id: counter.n++, leaf: false, left, right, depth, leafCount: left.leafCount + right.leafCount };
+			left.parent = node;
+			right.parent = node;
+			return node;
 		}
-		return build(items, 0);
+		let root = build(items, 0);
+		root.parent = null;
+		return root;
+	}
+
+	function isInSubtree(node, ancestor)
+	{
+		for (let p = node; p; p = p.parent)
+			if (p === ancestor) return true;
+		return false;
+	}
+
+	function forEachNode(node, fn)
+	{
+		fn(node);
+		if (!node.leaf) { forEachNode(node.left, fn); forEachNode(node.right, fn); }
+	}
+
+	// tree-diagram layout: each leaf gets its own horizontal slot (left-to-right order),
+	// each internal node sits at the average of its children's slots
+	function layoutTree(root)
+	{
+		let counter = { i: 0 };
+		(function assign(node)
+		{
+			if (node.leaf) node.layoutX = counter.i++;
+			else { assign(node.left); assign(node.right); node.layoutX = (node.left.layoutX + node.right.layoutX) / 2; }
+		})(root);
+		return counter.i;
 	}
 
 	// bottom-up: recompute every node's world-space box (and each leaf's world triangle)
@@ -314,7 +362,9 @@
 		return {
 			stack: [[rootA, rootB]], statusA: new Map(), statusB: new Map(),
 			testedTriA: new Set(), testedTriB: new Set(), collidedTriA: new Set(), collidedTriB: new Set(),
-			collisions: [], nodePairsTested: 0, triangleTests: 0, done: false
+			collisions: [], nodePairsTested: 0, triangleTests: 0, done: false,
+			current: null,		// the node pair processed last: { a, b, outcome }
+			triPairs: []		// every leaf-leaf triangle test: { a, b, hit }
 		};
 	}
 
@@ -323,13 +373,16 @@
 		if (state.stack.length === 0)
 		{
 			state.done = true;
+			state.current = null;
 			return { description: "Traversal complete." };
 		}
 		let [nodeA, nodeB] = state.stack.pop();
 		state.nodePairsTested++;
+		state.current = { a: nodeA, b: nodeB, outcome: null };
 
 		if (!boxesOverlap(nodeA.box, nodeB.box))
 		{
+			state.current.outcome = 'pruned';
 			upgradeStatus(state.statusA, nodeA.id, 'pruned');
 			upgradeStatus(state.statusB, nodeB.id, 'pruned');
 			return { description: `A#${nodeA.id} vs B#${nodeB.id}: boxes do not overlap → pruned (skips ${nodeA.leafCount}×${nodeB.leafCount} triangle pair(s)).` };
@@ -341,6 +394,8 @@
 			state.testedTriA.add(nodeA.triId);
 			state.testedTriB.add(nodeB.triId);
 			let hit = triangleIntersect(nodeA.triangle, nodeB.triangle);
+			state.current.outcome = hit ? 'hit' : 'miss';
+			state.triPairs.push({ a: nodeA, b: nodeB, hit });
 			if (hit)
 			{
 				state.collidedTriA.add(nodeA.triId);
@@ -352,6 +407,7 @@
 
 		upgradeStatus(state.statusA, nodeA.id, 'active');
 		upgradeStatus(state.statusB, nodeB.id, 'active');
+		state.current.outcome = 'descend';
 
 		if (nodeB.leaf || (!nodeA.leaf && boxArea(nodeA.box) >= boxArea(nodeB.box)))
 		{
@@ -392,6 +448,8 @@
 			this.localVerts = gen.verts;
 			this.triList = gen.tris;
 			this.root = buildMeshBVH(this.localVerts, this.triList);
+			this.leafCountTotal = layoutTree(this.root);
+			this.height = treeHeight(this.root);
 			this.radius = Math.max(...this.localVerts.map(p => len(p))) + cellSize * 0.4;
 
 			this.center = center;
@@ -492,6 +550,14 @@
 			this.stepLog = [];
 			this.camera = { zoom: 1, x: 0, y: 0 };	// mouse-wheel zoom (zoom-to-cursor); x/y is the screen-space pan offset
 
+			// tree view: both hierarchies as node-link diagrams; hover links tree nodes and scene
+			this.treeCanvas = document.getElementById("treeCanvas");
+			this.tc = this.treeCanvas.getContext("2d");
+			this.hover = null;		// { tree: 'A' | 'B', node }
+			this.treeCanvas.addEventListener("mousemove", this.treeMouseMove.bind(this), false);
+			this.treeCanvas.addEventListener("mouseleave", () => this.setHover(null), false);
+			this.canvas.addEventListener("mouseleave", () => { if (!this.dragTarget) this.setHover(null); }, false);
+
 			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
 			this.canvas.addEventListener("mousemove", this.mouseMove.bind(this), false);
 			this.canvas.addEventListener("mouseup", this.mouseUp.bind(this), false);
@@ -532,6 +598,7 @@
 			this.timeSum = 0.0;
 			this.counter = 0;
 			this.dragTarget = null;
+			this.hover = null;
 			this.stepLog = [];
 			document.getElementById("stepLog").innerHTML = "";
 
@@ -691,6 +758,43 @@
 			this.drawMesh(sim.meshA, "rgba(70,115,229,0.28)", "#4673e5", st.testedTriA, st.collidedTriA);
 			this.drawMesh(sim.meshB, "rgba(16,185,129,0.28)", "#10b981", st.testedTriB, st.collidedTriB);
 
+			// step mode: the boxes of the node pair processed last
+			if (sim.mode === 'step' && st.current)
+			{
+				let col = GUI.OUTCOME_COLORS[st.current.outcome];
+				c.save();
+				c.strokeStyle = col;
+				c.lineWidth = 3 / this.camera.zoom;
+				for (let n of [st.current.a, st.current.b])
+					c.strokeRect(n.box.minX, n.box.minY, n.box.maxX - n.box.minX, n.box.maxY - n.box.minY);
+				c.restore();
+			}
+
+			// hovered tree node: its box and all triangles in its subtree
+			if (this.hover)
+			{
+				let n = this.hover.node, z = this.camera.zoom;
+				let leaves = [];
+				collectLeaves(n, leaves);
+				c.save();
+				c.strokeStyle = "#111827";
+				c.fillStyle = "rgba(17,24,39,0.18)";
+				c.lineWidth = 2 / z;
+				for (let leaf of leaves)
+				{
+					let [a, b, cc] = leaf.triangle;
+					c.beginPath();
+					c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.lineTo(cc.x, cc.y);
+					c.closePath();
+					c.fill();
+					c.stroke();
+				}
+				c.setLineDash([8 / z, 5 / z]);
+				c.lineWidth = 2.5 / z;
+				c.strokeRect(n.box.minX, n.box.minY, n.box.maxX - n.box.minX, n.box.maxY - n.box.minY);
+				c.restore();
+			}
+
 			c.restore();
 
 			c.fillStyle = "#4b5563";
@@ -705,6 +809,273 @@
 
 			c.strokeStyle = "#999999";
 			c.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+
+			this.drawTrees();
+		}
+
+		// ---- tree view ----
+
+		// geometry of the tree diagram: tree A hangs down from the top, tree B grows up from the
+		// bottom, so the leaves of both trees face each other across the middle of the panel
+		treeLayout()
+		{
+			const W = this.treeCanvas.width, H = this.treeCanvas.height;
+			const sim = this.sim;
+			const left = 70, right = 20, top = 34, bottom = H - 34, gap = 90;
+			const hA = sim.meshA.height, hB = sim.meshB.height;
+			const level = Math.min(60, (bottom - top - gap) / Math.max(hA + hB, 1));
+			const slotA = (W - left - right) / sim.meshA.leafCountTotal;
+			const slotB = (W - left - right) / sim.meshB.leafCountTotal;
+			const slot = Math.min(slotA, slotB);
+			return {
+				W, H, left, top, bottom, slot,
+				radius: Math.max(3, Math.min(9, 0.38 * slot)),
+				split: (top + hA * level + bottom - hB * level) / 2,	// y between the two trees
+				pos: (tree, node) => tree === 'A'
+					? { x: left + (node.layoutX + 0.5) * slotA, y: top + node.depth * level }
+					: { x: left + (node.layoutX + 0.5) * slotB, y: bottom - node.depth * level }
+			};
+		}
+
+		// what happened to this node during the (current) traversal
+		nodeState(tree, node)
+		{
+			let st = this.sim.traverseState;
+			if (node.leaf)
+			{
+				if ((tree === 'A' ? st.collidedTriA : st.collidedTriB).has(node.triId)) return 'collided';
+				if ((tree === 'A' ? st.testedTriA : st.testedTriB).has(node.triId)) return 'tested';
+			}
+			return (tree === 'A' ? st.statusA : st.statusB).get(node.id) || 'unvisited';
+		}
+
+		setHover(h)
+		{
+			let same = (h === null && this.hover === null) || (h && this.hover && h.node === this.hover.node);
+			if (same) return;
+			this.hover = h;
+			this.treeCanvas.style.cursor = h ? "pointer" : "default";
+			if (this.pause)
+				this.draw();
+		}
+
+		treeMouseMove(event)
+		{
+			let p = this.getMousePos(this.treeCanvas, event);
+			let L = this.treeLayout();
+			let best = null, bestD2 = (L.radius + 6) * (L.radius + 6);
+			for (let [tree, mesh] of [['A', this.sim.meshA], ['B', this.sim.meshB]])
+				forEachNode(mesh.root, n =>
+				{
+					let q = L.pos(tree, n);
+					let d2 = (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y);
+					if (d2 < bestD2) { bestD2 = d2; best = { tree, node: n }; }
+				});
+			this.setHover(best);
+		}
+
+		// leaf whose triangle contains the given world position (or null)
+		pickLeaf(mesh, pos)
+		{
+			let leaves = [];
+			collectLeaves(mesh.root, leaves);
+			for (let leaf of leaves)
+				if (pointInTriangle(pos, leaf.triangle[0], leaf.triangle[1], leaf.triangle[2]))
+					return leaf;
+			return null;
+		}
+
+		drawTreeEdges(tree, node, L, highlight)
+		{
+			if (node.leaf) return;
+			let c = this.tc, p = L.pos(tree, node);
+			for (let child of [node.left, node.right])
+			{
+				let q = L.pos(tree, child);
+				let on = highlight && highlight.has(node) && highlight.has(child);
+				c.strokeStyle = on ? "#111827" : "#cbd5e1";
+				c.lineWidth = on ? 2.5 : 1.2;
+				c.beginPath();
+				c.moveTo(p.x, p.y);
+				c.lineTo(q.x, q.y);
+				c.stroke();
+				this.drawTreeEdges(tree, child, L, highlight);
+			}
+		}
+
+		drawTreeNodes(tree, root, L, highlight)
+		{
+			let c = this.tc, r = L.radius;
+			forEachNode(root, n =>
+			{
+				let p = L.pos(tree, n);
+				let col = GUI.STATE_COLORS[this.nodeState(tree, n)];
+				let dim = highlight && !highlight.has(n);
+				c.globalAlpha = dim ? 0.45 : 1;
+				c.fillStyle = col.fill;
+				c.strokeStyle = col.stroke;
+				c.lineWidth = 1;
+				c.beginPath();
+				if (n.leaf) c.rect(p.x - r, p.y - r, 2 * r, 2 * r);
+				else c.arc(p.x, p.y, r, 0, 2 * Math.PI);
+				c.fill();
+				c.stroke();
+				c.globalAlpha = 1;
+
+				// node ids (as used in the step log) when there is room for them
+				if (L.slot >= 26)
+				{
+					c.fillStyle = "#6b7280";
+					c.font = "10px Inter, sans-serif";
+					c.textAlign = "center";
+					c.fillText(`${tree}${n.id}`, p.x, tree === 'A' ? p.y - r - 4 : p.y + r + 11);
+					c.textAlign = "left";
+				}
+			});
+		}
+
+		drawTrees()
+		{
+			let c = this.tc, sim = this.sim, st = sim.traverseState;
+			let L = this.treeLayout(), r = L.radius;
+
+			// background bands identify the two trees by their mesh colors
+			c.clearRect(0, 0, L.W, L.H);
+			c.fillStyle = "#f3f6fe";
+			c.fillRect(0, 0, L.W, L.split);
+			c.fillStyle = "#effbf6";
+			c.fillRect(0, L.split, L.W, L.H - L.split);
+			c.strokeStyle = "#d1d5db";
+			c.setLineDash([4, 4]);
+			c.beginPath();
+			c.moveTo(0, L.split); c.lineTo(L.W, L.split);
+			c.stroke();
+			c.setLineDash([]);
+
+			c.font = "bold 14px Inter, sans-serif";
+			c.fillStyle = "#4673e5";
+			c.fillText("Tree A", 10, L.top + 5);
+			c.fillStyle = "#059669";
+			c.fillText("Tree B", 10, L.bottom + 5);
+			c.font = "11px Inter, sans-serif";
+			c.fillStyle = "#6b7280";
+			c.fillText("root ↓", 10, L.top + 20);
+			c.fillText("root ↑", 10, L.bottom - 12);
+			c.fillText("leaves", 10, L.split - 8);
+			c.fillText("leaves", 10, L.split + 16);
+
+			// hovered node: its subtree plus the path up to the root
+			let highlight = null;
+			if (this.hover)
+			{
+				highlight = new Set();
+				forEachNode(this.hover.node, n => highlight.add(n));
+				for (let p = this.hover.node.parent; p; p = p.parent) highlight.add(p);
+			}
+
+			this.drawTreeEdges('A', sim.meshA.root, L, highlight);
+			this.drawTreeEdges('B', sim.meshB.root, L, highlight);
+
+			// leaf-leaf triangle tests as lines between the two trees
+			// (when hovering, only the tests involving the hovered subtree stay visible)
+			for (let t of st.triPairs)
+			{
+				let pa = L.pos('A', t.a), pb = L.pos('B', t.b);
+				let inSub = this.hover && (this.hover.tree === 'A' ? isInSubtree(t.a, this.hover.node) : isInSubtree(t.b, this.hover.node));
+				c.strokeStyle = t.hit ? "#e61e1e" : "#ca8a04";
+				c.globalAlpha = this.hover ? (inSub ? 0.95 : 0.08) : (t.hit ? 0.8 : 0.4);
+				c.lineWidth = t.hit ? 1.8 : 1;
+				c.beginPath();
+				c.moveTo(pa.x, pa.y); c.lineTo(pb.x, pb.y);
+				c.stroke();
+			}
+			c.globalAlpha = 1;
+
+			// step mode: pending pairs on the stack (dashed) and the pair processed last (thick)
+			if (sim.mode === 'step')
+			{
+				c.setLineDash([5, 5]);
+				c.strokeStyle = "#64748b";
+				c.lineWidth = 1.2;
+				c.globalAlpha = 0.7;
+				for (let [a, b] of st.stack)
+				{
+					let pa = L.pos('A', a), pb = L.pos('B', b);
+					c.beginPath();
+					c.moveTo(pa.x, pa.y); c.lineTo(pb.x, pb.y);
+					c.stroke();
+				}
+				c.setLineDash([]);
+				c.globalAlpha = 1;
+			}
+
+			this.drawTreeNodes('A', sim.meshA.root, L, highlight);
+			this.drawTreeNodes('B', sim.meshB.root, L, highlight);
+
+			if (sim.mode === 'step' && st.current)
+			{
+				let col = GUI.OUTCOME_COLORS[st.current.outcome];
+				let pa = L.pos('A', st.current.a), pb = L.pos('B', st.current.b);
+				c.strokeStyle = col;
+				c.lineWidth = 3.5;
+				c.beginPath();
+				c.moveTo(pa.x, pa.y); c.lineTo(pb.x, pb.y);
+				c.stroke();
+				c.lineWidth = 3;
+				for (let p of [pa, pb])
+				{
+					c.beginPath();
+					c.arc(p.x, p.y, r + 5, 0, 2 * Math.PI);
+					c.stroke();
+				}
+			}
+
+			// hovered node: ring + tooltip
+			if (this.hover)
+			{
+				let n = this.hover.node, p = L.pos(this.hover.tree, n);
+				c.strokeStyle = "#111827";
+				c.lineWidth = 2;
+				c.beginPath();
+				c.arc(p.x, p.y, r + 4, 0, 2 * Math.PI);
+				c.stroke();
+
+				const STATE_TEXT = {
+					unvisited: "never reached by the traversal",
+					active: "box overlapped → descended",
+					pruned: "pruned (no box overlap)",
+					tested: "triangle tested, no overlap",
+					collided: "triangle collides"
+				};
+				let lines = [
+					`${this.hover.tree}#${n.id}  ·  ${n.leaf ? 'leaf (triangle ' + n.triId + ')' : 'internal node'}  ·  depth ${n.depth}`,
+					`${n.leafCount} triangle(s) in subtree`,
+					STATE_TEXT[this.nodeState(this.hover.tree, n)]
+				];
+				if (n.leaf)
+				{
+					let partners = st.triPairs.filter(t => (this.hover.tree === 'A' ? t.a : t.b) === n);
+					if (partners.length > 0)
+						lines.push(`tested against ${partners.length} triangle(s) of mesh ${this.hover.tree === 'A' ? 'B' : 'A'}`);
+				}
+				c.font = "12px Inter, sans-serif";
+				let w = Math.max(...lines.map(s => c.measureText(s).width)) + 16;
+				let h = lines.length * 16 + 10;
+				let x = Math.min(Math.max(p.x + 14, 4), L.W - w - 4);
+				let y = this.hover.tree === 'A' ? p.y + 14 : p.y - h - 14;
+				y = Math.min(Math.max(y, 4), L.H - h - 4);
+				c.fillStyle = "rgba(255,255,255,0.95)";
+				c.strokeStyle = "#9ca3af";
+				c.lineWidth = 1;
+				c.fillRect(x, y, w, h);
+				c.strokeRect(x, y, w, h);
+				c.fillStyle = "#111827";
+				lines.forEach((s, i) => c.fillText(s, x + 8, y + 18 + i * 16));
+			}
+
+			c.strokeStyle = "#999999";
+			c.lineWidth = 1;
+			c.strokeRect(0, 0, L.W, L.H);
 		}
 
 		mainLoop()
@@ -779,6 +1150,15 @@
 					this.sim.restartTraversal();
 				this.refresh();
 			}
+			else if (event.clientX !== undefined)
+			{
+				// hover a triangle -> highlight its leaf (and path to the root) in the tree view
+				let pos = this.screenToWorld(this.getMousePos(this.canvas, event));
+				let leaf = this.pickLeaf(this.sim.meshA, pos);
+				let h = leaf ? { tree: 'A', node: leaf } : null;
+				if (!h) { leaf = this.pickLeaf(this.sim.meshB, pos); h = leaf ? { tree: 'B', node: leaf } : null; }
+				this.setHover(h);
+			}
 		}
 
 		mouseUp(event)
@@ -813,6 +1193,15 @@
 				this.mouseUp(event);
 		}
 	}
+
+	GUI.STATE_COLORS = {
+		unvisited: { fill: "#e2e8f0", stroke: "#94a3b8" },
+		active:    { fill: "#4673e5", stroke: "#2f55b8" },
+		pruned:    { fill: "#f59e0b", stroke: "#b45309" },
+		tested:    { fill: "#facc15", stroke: "#ca8a04" },
+		collided:  { fill: "#e61e1e", stroke: "#991b1b" }
+	};
+	GUI.OUTCOME_COLORS = { pruned: "#f59e0b", descend: "#4673e5", hit: "#e61e1e", miss: "#ca8a04" };
 
 	gui = new GUI();
 	gui.restart();
