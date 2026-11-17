@@ -1,0 +1,977 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Signed Distance Field</title>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>Signed Distance Field</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="70%">
+		<col width="30%">
+		<tr>
+			<td>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="760" style="border:2px solid #000000;border-radius: 20px;background-color:#FFFFFF">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+					<p class="canvas-hint">
+						Drag the white query point $\mathbf p$ to see how a distance query works.
+						Click a grid node to see how its signed distance was computed.
+						Drag the polygon's vertices to change the shape (the field is recomputed immediately).
+					</p>
+					<div class="sim-canvas-wrap" style="margin-top:6px">
+						<canvas id="infoCanvas" width="1024" height="400" style="border:2px solid #000000;border-radius: 20px;background-color:#FFFFFF"></canvas>
+					</div>
+					<p class="canvas-hint">
+						<b>Left:</b> computation of the selected grid node (construction of the field, done once in a preprocessing step).
+						<b>Right:</b> evaluation of the field at the query point by bilinear interpolation (done at runtime, e.g. for every particle or vertex in every time step).
+					</p>
+				</div>
+			</td>
+			<td>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Grid cells</label>
+						<span class="stat-value"><span id="gridCells">-</span></span>
+
+						<label>Grid nodes</label>
+						<span class="stat-value"><span id="gridNodes">-</span></span>
+
+						<label>Polygon edges</label>
+						<span class="stat-value"><span id="numEdges">-</span></span>
+
+						<label>Point&ndash;edge tests (construction)</label>
+						<span class="stat-value"><span id="numTests">-</span></span>
+
+						<label>Construction time</label>
+						<span class="stat-value"><span id="buildTime">-</span></span>
+
+						<label>&phi;(p) interpolated</label>
+						<span class="stat-value"><span id="phiInterp">-</span></span>
+
+						<label>&phi;(p) exact</label>
+						<span class="stat-value"><span id="phiExact">-</span></span>
+
+						<label>Interpolation error</label>
+						<span class="stat-value"><span id="phiError">-</span></span>
+
+						<label>Query result</label>
+						<span class="stat-value"><span id="queryResult">-</span></span>
+
+						<label for="shapeInput">Shape</label>
+						<select onchange="gui.setShape(this.value)" id="shapeInput">
+							<option value="star" selected="selected">Star</option>
+							<option value="blob">Smooth blob</option>
+							<option value="circle">Circle</option>
+							<option value="lshape">L-shape</option>
+							<option value="thin">Thin feature</option>
+						</select>
+
+						<label for="cellInput">Cell size h</label>
+						<select onchange="gui.setCellSize(parseInt(this.value))" id="cellInput">
+							<option value="80">80 px</option>
+							<option value="60" selected="selected">60 px</option>
+							<option value="40">40 px</option>
+							<option value="30">30 px</option>
+							<option value="20">20 px</option>
+							<option value="12">12 px</option>
+							<option value="8">8 px</option>
+						</select>
+
+						<label for="speedInput">Build speed</label>
+						<select id="speedInput">
+							<option value="1">1 node / frame</option>
+							<option value="4" selected="selected">4 nodes / frame</option>
+							<option value="20">20 nodes / frame</option>
+							<option value="100">100 nodes / frame</option>
+						</select>
+
+						<div class="full-width">
+							<button onclick="gui.startBuild()" id="build">&#9654; Build step by step</button>
+						</div>
+						<div class="full-width">
+							<button onclick="gui.buildAll()" id="buildAll" class="btn-secondary">Compute all nodes</button>
+						</div>
+
+						<label for="fieldInput">Color field</label>
+						<input onchange="gui.show.field = this.checked" id="fieldInput" type="checkbox" checked>
+
+						<label for="isoInput">Distance isolines</label>
+						<input onchange="gui.show.iso = this.checked" id="isoInput" type="checkbox" checked>
+
+						<label for="zeroInput">Reconstructed surface (&phi; = 0)</label>
+						<input onchange="gui.show.zero = this.checked" id="zeroInput" type="checkbox" checked>
+
+						<label for="valuesInput">Node values (h &ge; 40)</label>
+						<input onchange="gui.show.values = this.checked" id="valuesInput" type="checkbox" checked>
+
+						<label for="rayInput">Sign test ray</label>
+						<input onchange="gui.show.ray = this.checked" id="rayInput" type="checkbox" checked>
+					</div>
+				</div>
+			</td>
+		</tr>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>Signed distance fields</h2>
+		<p>
+		The <b>signed distance function</b> of a closed object $\Omega$ with surface $\partial\Omega$ assigns to every point $\mathbf x$ its distance to the surface, with a negative sign inside:
+		$$\phi(\mathbf x) = s(\mathbf x)\, \min_{\mathbf y \in \partial\Omega} \|\mathbf x - \mathbf y\|, \qquad s(\mathbf x) = \begin{cases} -1 & \mathbf x \in \Omega \text{ (inside)} \\ +1 & \text{otherwise (outside)}. \end{cases}$$
+		So the surface is the zero level set $\phi(\mathbf x) = 0$. For collision detection, a single evaluation of $\phi$ answers several questions at once:
+		</p>
+		<ul>
+			<li><b>Collision test:</b> $\phi(\mathbf p) < 0$ means that the point $\mathbf p$ penetrates the object.</li>
+			<li><b>Penetration depth:</b> $|\phi(\mathbf p)|$.</li>
+			<li><b>Contact normal:</b> the gradient $\mathbf n = \nabla\phi(\mathbf p)$ points away from the closest surface point. Since $\phi$ is a distance, $\|\nabla\phi\| = 1$ almost everywhere (the <em>Eikonal equation</em>).</li>
+			<li><b>Closest surface point:</b> $\mathbf c = \mathbf p - \phi(\mathbf p)\, \nabla\phi(\mathbf p)$.</li>
+		</ul>
+		<p>
+		For simple shapes like spheres and boxes, $\phi$ has a closed-form expression (see the <a href="sdf_sphere_plot.html">sphere</a> and <a href="sdf_box_plot.html">box</a> examples). For a general object, given as a triangle mesh in 3D or as a polygon in 2D as in this example, computing the exact distance means finding the closest of all triangles (edges), which is far too slow to do for every query. The common solution is to <b>precompute $\phi$ on a regular grid</b> once and to <b>interpolate</b> it at runtime. The result is called a <b>signed distance field (SDF)</b>.
+		</p>
+
+		<h3>The grid</h3>
+		<p>
+		The SDF is a regular grid of $n_x \times n_y$ square cells of size $h$ (cubes and $n_x \times n_y \times n_z$ cells in 3D) that stores one value per <em>grid node</em>, i.e. per cell corner. The grid is defined by three things:
+		</p>
+		<ul>
+			<li><b>The domain.</b> The grid has to cover the region in which queries can occur. Usually this is the axis-aligned bounding box $[\mathbf b_{\min}, \mathbf b_{\max}]$ of the object, enlarged on all sides by a margin $m$:
+			$$\mathbf x_0 = \mathbf b_{\min} - (m, m)^T, \qquad \mathbf x_{\max} = \mathbf b_{\max} + (m, m)^T.$$
+			The <b>origin</b> $\mathbf x_0$ is the corner of the domain with the smallest coordinates, and it is the position of node $(0,0)$. The margin is needed because collision queries happen <em>near the surface, also outside of it</em>: a point that is about to collide lies just outside the object, and its distance must still be available. A typical choice is a few cells, or the largest distance at which the application still needs a value, e.g. the collision tolerance or the radius of the particles.</li>
+			<li><b>The resolution.</b> For a chosen cell size $h$, the number of cells per axis is
+			$$n_x = \left\lceil \frac{x_{\max} - x_0}{h} \right\rceil, \qquad n_y = \left\lceil \frac{y_{\max} - y_0}{h} \right\rceil.$$
+			Alternatively, one fixes $n_x, n_y$ and computes $h$ from the size of the domain. Rounding up makes the grid slightly larger than the domain, which does no harm.</li>
+			<li><b>The node positions.</b> Node $(i, j)$ with $i = 0,\dots,n_x$ and $j = 0,\dots,n_y$ lies at
+			$$\mathbf x_{ij} = \mathbf x_0 + \begin{pmatrix} i\,h \\ j\,h \end{pmatrix},$$
+			and stores the value $\phi_{ij} = \phi(\mathbf x_{ij})$. Positions are never stored; they follow from $\mathbf x_0$, $h$ and the indices. Conversely, the indices of the cell that contains a point follow from its position (see the query below), so finding the cell needs no search at all.</li>
+		</ul>
+		<p>
+		<b>Storage.</b> The values are kept in a flat array, typically row by row: node $(i,j)$ is stored at index $k = j\,(n_x+1) + i$, in 3D node $(i,j,l)$ at $k = \big(l\,(n_y+1) + j\big)(n_x+1) + i$. The grid has $(n_x+1)(n_y+1)$ nodes in 2D and $(n_x+1)(n_y+1)(n_z+1)$ in 3D. Halving $h$ multiplies the memory by 4 in 2D and by 8 in 3D. For example, a $256^3$ grid already needs about 17 million values ($257^3$ nodes, about 68 MB with 4-byte floats). This is why the cell size is a trade-off between accuracy and memory.
+		</p>
+		<p>
+		<b>Queries outside the domain.</b> Outside the grid, no values are available. Depending on the application, such a query is simply reported as "far away, no collision", or the point is clamped to the domain and the distance from the point to the domain is added as a conservative estimate.
+		</p>
+		<p>
+		<b>Moving objects.</b> For a rigid body, the grid is defined once in the body's <em>local</em> coordinate system, so $\mathbf x_0$ and the grid axes move with the body. A query point is first transformed into the local system, $\mathbf p_{\text{local}} = \mathbf R^T(\mathbf p - \mathbf t)$, and the resulting normal is rotated back to world coordinates with $\mathbf R$.
+		</p>
+		<p>
+		<b>In this example</b> the grid simply covers the drawing area, which is the region where the query point can be moved. $\mathbf x_0$ is the top left node, and since the $y$-axis of the canvas points down, the index $j$ increases downward. The header of the scene shows $n_x \times n_y$, $h$ and the number of nodes for the current cell size. The colors show the sign (blue inside, orange outside), and the thin lines are isolines of the interpolated field at multiples of 20 px.
+		</p>
+
+		<h3>Construction: computing the value at a grid node</h3>
+		<p>The value of each node is computed in two independent parts:</p>
+		<ol>
+			<li><b>Unsigned distance:</b> the distance to the closest point of the surface. Here, this is the minimum distance over all polygon edges $\overline{\mathbf a\mathbf b}$. The closest point on an edge is found by projecting onto the edge's line and clamping to the segment:
+			$$t = \text{clamp}\!\left(\frac{(\mathbf x - \mathbf a)\cdot(\mathbf b - \mathbf a)}{\|\mathbf b - \mathbf a\|^2},\ 0,\ 1\right), \qquad \mathbf c = \mathbf a + t\,(\mathbf b - \mathbf a), \qquad d = \|\mathbf x - \mathbf c\|.$$
+			If $t$ is clamped to 0 or 1, the closest feature is a vertex, otherwise the interior of the edge. In 3D, the corresponding operation is the point&ndash;triangle distance, where the closest feature can be a vertex, an edge or the triangle's interior.</li>
+			<li><b>Sign:</b> inside or outside? The example casts a ray from the node in the $+x$ direction and counts how often it crosses the polygon: an odd number of crossings means inside (even&ndash;odd rule). In 3D, robust alternatives are the angle-weighted pseudo-normal of the closest feature [BA05] and generalized winding numbers.</li>
+		</ol>
+		<p>
+		The dashed circle around the selected node has radius $|\phi_{ij}|$ and touches the polygon only at the closest point; no part of the surface lies inside it. Testing every node against every edge costs $O(\#\text{nodes} \cdot \#\text{edges})$ (see the statistics). Practical implementations accelerate this, e.g. by finding the closest triangle with a bounding volume hierarchy, by computing exact distances only in a narrow band around the surface and propagating them outward with the fast marching [Set96] or fast sweeping [Zha05] method, or by adaptive grids [KDBB17]. Since construction happens once in a preprocessing step, its cost matters much less than the cost of a query. Use "Build step by step" to watch the nodes being computed one after another.
+		</p>
+
+		<h3>Distance query: evaluating the field at an arbitrary point</h3>
+		<p>A query at a point $\mathbf p$ only needs the four nodes (eight in 3D) of the cell that contains $\mathbf p$:</p>
+		<ol>
+			<li><b>Find the cell</b> and the local coordinates $s, t \in [0,1]$ of $\mathbf p$ inside it:
+			$$i = \left\lfloor \frac{p_x - x_0}{h} \right\rfloor,\quad j = \left\lfloor \frac{p_y - y_0}{h} \right\rfloor,\qquad s = \frac{p_x - x_0}{h} - i,\quad t = \frac{p_y - y_0}{h} - j.$$</li>
+			<li><b>Interpolate bilinearly</b>: first along $x$ on the two cell edges, then along $y$ between the results:
+			$$a = (1-s)\,\phi_{i,j} + s\,\phi_{i+1,j}, \qquad b = (1-s)\,\phi_{i,j+1} + s\,\phi_{i+1,j+1}, \qquad \phi(\mathbf p) \approx (1-t)\,a + t\,b.$$
+			In 3D, trilinear interpolation does the same with the 8 corners of a cell (7 linear interpolations).</li>
+			<li><b>Gradient</b> (if a normal is needed): differentiate the interpolant, e.g. $\frac{\partial\phi}{\partial x} = \frac{1}{h}\big((1-t)(\phi_{i+1,j} - \phi_{i,j}) + t\,(\phi_{i+1,j+1} - \phi_{i,j+1})\big)$, and normalize it.</li>
+		</ol>
+		<p>
+		So a query costs a constant number of operations, independent of how complex the object is. This is the main advantage of SDFs. For a moving rigid body, the field is stored in the body's local coordinate system and the query point is transformed into this system first. For a deforming object, the field would have to be recomputed.
+		</p>
+
+		<h3>Accuracy</h3>
+		<p>
+		The interpolated field is only an approximation; compare the exact polygon (solid) with the reconstructed zero level set (dashed) and the interpolation error in the statistics. The error is largest where the true distance function is not smooth:
+		</p>
+		<ul>
+			<li><b>Sharp corners</b> (star, L-shape) are rounded off by the interpolation.</li>
+			<li>Inside the object, $\phi$ has <b>kinks along the medial axis</b>, where two surface parts are equally close.</li>
+			<li><b>Features thinner than the cell size</b> can disappear completely: try the "Thin feature" shape with $h = 40$ and then refine the grid.</li>
+		</ul>
+		<p>
+		Finer grids reduce the error but need more memory. Adaptive grids and higher-order interpolation (e.g. cubic polynomials per cell) reach a given accuracy with far fewer values [KDBB17].
+		</p>
+
+		<h3>References</h3>
+		<ul>
+		<li>[JBS06] Mark W. Jones, J. Andreas B&aelig;rentzen, Milos Sramek. 3D Distance Fields: A Survey of Techniques and Applications. IEEE Transactions on Visualization and Computer Graphics, 2006.</li>
+		<li>[BA05] J. Andreas B&aelig;rentzen, Henrik Aan&aelig;s. Signed Distance Computation Using the Angle Weighted Pseudonormal. IEEE Transactions on Visualization and Computer Graphics, 2005.</li>
+		<li>[Set96] James A. Sethian. A Fast Marching Level Set Method for Monotonically Advancing Fronts. Proceedings of the National Academy of Sciences, 1996.</li>
+		<li>[Zha05] Hongkai Zhao. A Fast Sweeping Method for Eikonal Equations. Mathematics of Computation, 2005.</li>
+		<li>[KDBB17] Dan Koschier, Crispin Deul, Magnus Brand, Jan Bender. An hp-Adaptive Discretization Algorithm for Signed Distance Field Generation. IEEE Transactions on Visualization and Computer Graphics, 2017.</li>
+		</ul>
+	</div>
+
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	// =====================================================================================
+	//  Overview
+	//  --------
+	//  1. Exact signed distance of a point to a closed polygon (signedDistance): unsigned
+	//     distance = minimum over all edges, sign = even-odd ray crossing test.
+	//  2. The signed distance FIELD (class SDFGrid): the exact signed distance is evaluated
+	//     once at every grid node (construction) and bilinearly interpolated at runtime (query).
+	//  3. The GUI class: drawing, interaction and the main loop.
+	//
+	//  Coordinates: canvas pixels, x points right and y points DOWN. Vectors are objects { x, y }.
+	// =====================================================================================
+
+	// ---- small vector helpers ----
+	function add(a, b)   { return { x: a.x + b.x, y: a.y + b.y }; }
+	function sub(a, b)   { return { x: a.x - b.x, y: a.y - b.y }; }
+	function mul(a, s)   { return { x: a.x * s, y: a.y * s }; }
+	function dot(a, b)   { return a.x * b.x + a.y * b.y; }
+	function len(a)      { return Math.sqrt(dot(a, a)); }
+	function perp(a)     { return { x: -a.y, y: a.x }; }
+	function normalize(a) { let l = len(a); return l > 0 ? { x: a.x / l, y: a.y / l } : { x: 0, y: 0 }; }
+
+	// ---- exact signed distance to a polygon ----
+
+	// Closest point on the segment a-b to the point p:
+	// project p onto the line through a and b (parameter t) and clamp t to [0, 1].
+	// t = 0 or t = 1 means that the closest feature is a vertex, otherwise the edge interior.
+	function closestPointOnSegment(p, a, b)
+	{
+		let ab = sub(b, a);
+		let t = dot(sub(p, a), ab) / dot(ab, ab);
+		t = Math.max(0, Math.min(1, t));
+		return { c: add(a, mul(ab, t)), t };
+	}
+
+	// Exact signed distance from p to a closed polygon (list of vertices).
+	// Returns all intermediate results so that the GUI can visualize the computation:
+	//   phi       signed distance (negative inside)
+	//   d         unsigned distance
+	//   closest   closest point on the polygon, edge: index of the closest edge, t: its parameter
+	//   crossings intersection points of the ray from p in +x direction with the polygon
+	function signedDistance(p, poly)
+	{
+		// 1. unsigned distance: minimum over all edges (brute force)
+		let bestD2 = Infinity, closest = null, edge = -1, tBest = 0;
+		for (let i = 0; i < poly.length; i++)
+		{
+			let a = poly[i], b = poly[(i + 1) % poly.length];
+			let { c, t } = closestPointOnSegment(p, a, b);
+			let d2 = dot(sub(p, c), sub(p, c));			// compare squared distances (no sqrt needed)
+			if (d2 < bestD2) { bestD2 = d2; closest = c; edge = i; tBest = t; }
+		}
+		let d = Math.sqrt(bestD2);
+
+		// 2. sign: cast a ray from p in +x direction and count the crossings with the polygon
+		//    (even-odd rule: odd number of crossings -> inside).
+		//    An edge a-b is crossed if a and b lie on different sides of the horizontal line
+		//    through p and the intersection point lies to the right of p. The half-open test
+		//    (a.y > p.y) !== (b.y > p.y) avoids counting a vertex on the ray twice.
+		let crossings = [];
+		for (let i = 0; i < poly.length; i++)
+		{
+			let a = poly[i], b = poly[(i + 1) % poly.length];
+			if ((a.y > p.y) !== (b.y > p.y))
+			{
+				let x = a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x);	// intersection with the line y = p.y
+				if (x > p.x) crossings.push({ x, y: p.y });
+			}
+		}
+		let inside = crossings.length % 2 === 1;
+
+		return { phi: inside ? -d : d, d, inside, closest, edge, t: tBest, crossings };
+	}
+
+	// ---- shapes (closed polygons in canvas coordinates) ----
+	function makeShape(kind, cx, cy)
+	{
+		let pts = [];
+		let polar = (n, rFunc) => { for (let i = 0; i < n; i++) { let a = i * 2 * Math.PI / n; let r = rFunc(a); pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }); } };
+		if (kind === 'circle') polar(40, () => 190);
+		else if (kind === 'blob') polar(64, a => 175 + 45 * Math.sin(3 * a) + 25 * Math.cos(5 * a + 1));
+		else if (kind === 'star') polar(10, a => (Math.round(a / (Math.PI / 5)) % 2 === 0) ? 250 : 105);
+		else if (kind === 'lshape')
+			pts = [[-220, -220], [-60, -220], [-60, 80], [220, 80], [220, 220], [-220, 220]].map(([x, y]) => ({ x: cx + x, y: cy + y }));
+		else	// thin feature: a box with a thin (14 px) bar attached. The bar lies between two rows
+				// of grid nodes for h = 40, so it is lost at this resolution (and found again for h <= 30).
+			pts = [[-260, -60], [-120, -60], [-120, 17], [280, 17], [280, 31], [-120, 31], [-120, 120], [-260, 120]].map(([x, y]) => ({ x: cx + x, y: cy + y }));
+		return pts;
+	}
+
+	// =====================================================================================
+	//  The signed distance field: values at the nodes of a regular grid
+	// =====================================================================================
+	// The grid has nx x ny cells of size h; its node (i, j) lies at x0 + (i h, j h), with
+	// i = 0..nx, j = 0..ny. The values are stored in a flat array, node (i, j) at index j*(nx+1)+i.
+	class SDFGrid
+	{
+		constructor(x0, y0, h, nx, ny)
+		{
+			this.x0 = x0; this.y0 = y0; this.h = h; this.nx = nx; this.ny = ny;
+			this.numNodes = (nx + 1) * (ny + 1);
+			this.phi = new Float64Array(this.numNodes);			// signed distance per node
+			this.computed = new Uint8Array(this.numNodes);		// 1 if the node value is already computed
+		}
+
+		index(i, j)    { return j * (this.nx + 1) + i; }
+		nodePos(i, j)  { return { x: this.x0 + i * this.h, y: this.y0 + j * this.h }; }
+		nodeIJ(k)      { return { i: k % (this.nx + 1), j: Math.floor(k / (this.nx + 1)) }; }
+
+		// Construction of one node: evaluate the exact signed distance at the node position.
+		computeNode(k, poly)
+		{
+			let { i, j } = this.nodeIJ(k);
+			this.phi[k] = signedDistance(this.nodePos(i, j), poly).phi;
+			this.computed[k] = 1;
+		}
+
+		// Distance query at an arbitrary point p by bilinear interpolation.
+		// Returns all intermediate values for the visualization (or null outside the grid).
+		query(p)
+		{
+			let h = this.h;
+			// 1. cell containing p and local coordinates (s, t) in [0, 1]^2
+			let fx = (p.x - this.x0) / h, fy = (p.y - this.y0) / h;
+			if (fx < 0 || fy < 0 || fx > this.nx || fy > this.ny) return null;
+			let i = Math.min(Math.floor(fx), this.nx - 1), j = Math.min(Math.floor(fy), this.ny - 1);
+			let s = fx - i, t = fy - j;
+
+			// 2. the values at the four corners of the cell
+			let k00 = this.index(i, j), k10 = this.index(i + 1, j), k01 = this.index(i, j + 1), k11 = this.index(i + 1, j + 1);
+			let ready = this.computed[k00] && this.computed[k10] && this.computed[k01] && this.computed[k11];
+			let f00 = this.phi[k00], f10 = this.phi[k10], f01 = this.phi[k01], f11 = this.phi[k11];
+
+			// 3. bilinear interpolation: first in x direction on both cell edges, then in y direction
+			let a = (1 - s) * f00 + s * f10;		// on the edge j   (between nodes (i,j) and (i+1,j))
+			let b = (1 - s) * f01 + s * f11;		// on the edge j+1 (between nodes (i,j+1) and (i+1,j+1))
+			let phi = (1 - t) * a + t * b;
+
+			// 4. gradient = derivative of the bilinear interpolant (chain rule: ds/dx = 1/h)
+			let grad = {
+				x: ((1 - t) * (f10 - f00) + t * (f11 - f01)) / h,
+				y: ((1 - s) * (f01 - f00) + s * (f11 - f10)) / h
+			};
+			// 5. normal and estimated closest surface point c = p - phi * n
+			let n = normalize(grad);
+			let closest = sub(p, mul(n, phi));
+
+			return { i, j, s, t, f00, f10, f01, f11, a, b, phi, grad, n, closest, ready };
+		}
+	}
+
+	// ---- marching squares: isolines of the bilinearly interpolated field ----
+	// For each cell, find the points on the cell edges where phi = level (linear interpolation
+	// between the two edge nodes) and connect them. Returns a list of segments [p, q].
+	function isolineSegments(grid, level)
+	{
+		let segs = [];
+		let { nx, ny, phi, computed } = grid;
+		for (let j = 0; j < ny; j++)
+			for (let i = 0; i < nx; i++)
+			{
+				// corners in cyclic order: (i,j), (i+1,j), (i+1,j+1), (i,j+1)
+				let ks = [grid.index(i, j), grid.index(i + 1, j), grid.index(i + 1, j + 1), grid.index(i, j + 1)];
+				if (!(computed[ks[0]] && computed[ks[1]] && computed[ks[2]] && computed[ks[3]])) continue;
+				let v = ks.map(k => phi[k] - level);
+				let P = [grid.nodePos(i, j), grid.nodePos(i + 1, j), grid.nodePos(i + 1, j + 1), grid.nodePos(i, j + 1)];
+				let pts = [];		// crossing points on edge e (from corner e to corner e+1), or null
+				for (let e = 0; e < 4; e++)
+				{
+					let va = v[e], vb = v[(e + 1) % 4];
+					if ((va < 0) !== (vb < 0))
+						pts.push(add(P[e], mul(sub(P[(e + 1) % 4], P[e]), va / (va - vb))));
+					else pts.push(null);
+				}
+				let found = pts.filter(q => q);
+				if (found.length === 2) segs.push(found);
+				else if (found.length === 4)
+				{
+					// saddle cell: decide the connection with the value at the cell center
+					let center = (v[0] + v[1] + v[2] + v[3]) / 4;
+					if ((center < 0) === (v[0] < 0)) segs.push([pts[0], pts[1]], [pts[2], pts[3]]);
+					else segs.push([pts[3], pts[0]], [pts[1], pts[2]]);
+				}
+			}
+		return segs;
+	}
+
+	// colors for the field: blue inside (phi < 0), orange outside (phi > 0)
+	function fieldColor(phi)
+	{
+		let lerp = (c0, c1, t) => c0.map((v, k) => Math.round(v + (c1[k] - v) * t));
+		if (phi < 0) return lerp([255, 255, 255], [37, 99, 235], Math.min(-phi / 140, 1));
+		return lerp([255, 255, 255], [234, 88, 12], Math.min(phi / 260, 1));
+	}
+
+	function fmt(v, digits = 1) { return (v < 0 ? "−" : "") + Math.abs(v).toFixed(digits); }
+
+	// =====================================================================================
+	//  GUI
+	// =====================================================================================
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.infoCanvas = document.getElementById("infoCanvas");
+			this.ic = this.infoCanvas.getContext("2d");
+			this.fieldCanvas = document.createElement("canvas");		// small offscreen image: one pixel per node
+
+			this.show = { field: true, iso: true, zero: true, values: true, ray: true };
+			this.cellSize = parseInt(document.getElementById("cellInput").value);
+			this.query = { x: 640, y: 300 };		// query point p
+			this.drag = null;
+			this.building = false;					// step-by-step construction running?
+			this.buildNext = 0;						// next node to compute during step-by-step construction
+
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			window.addEventListener("mousemove", this.mouseMove.bind(this), false);
+			window.addEventListener("mouseup", () => { this.drag = null; }, false);
+			this.canvas.addEventListener("touchstart", e => { e.preventDefault(); this.mouseDown(e.touches[0]); }, { passive: false });
+			this.canvas.addEventListener("touchmove", e => { e.preventDefault(); this.mouseMove(e.touches[0]); }, { passive: false });
+			this.canvas.addEventListener("touchend", () => { this.drag = null; }, false);
+
+			this.setShape(document.getElementById("shapeInput").value);
+			this.mainLoop();
+		}
+
+		// ---- setup ----
+
+		setShape(kind)
+		{
+			this.poly = makeShape(kind, 512, 410);
+			this.makeGrid();
+		}
+
+		setCellSize(h)
+		{
+			this.cellSize = h;
+			this.makeGrid();
+		}
+
+		// create a grid with cells of size h that covers the drawing area (below the header)
+		makeGrid()
+		{
+			const W = this.canvas.width, H = this.canvas.height, top = 92, margin = 24;
+			let h = this.cellSize;
+			let nx = Math.floor((W - 2 * margin) / h), ny = Math.floor((H - top - margin) / h);
+			let x0 = (W - nx * h) / 2, y0 = top + (H - top - margin - ny * h) / 2;
+			this.grid = new SDFGrid(x0, y0, h, nx, ny);
+			this.buildAll();
+			// select the node next to the query point
+			this.selected = this.nearestNode(this.query);
+		}
+
+		// construction of the whole field at once (also measures the time)
+		buildAll()
+		{
+			this.building = false;
+			let t0 = performance.now();
+			for (let k = 0; k < this.grid.numNodes; k++)
+				this.grid.computeNode(k, this.poly);
+			this.buildTime = performance.now() - t0;
+			this.fieldDirty = true;
+		}
+
+		// step-by-step construction: clear all values, then compute a few nodes per frame
+		startBuild()
+		{
+			this.grid.computed.fill(0);
+			this.building = true;
+			this.buildNext = 0;
+			this.fieldDirty = true;
+		}
+
+		nearestNode(p)
+		{
+			let g = this.grid;
+			let i = Math.min(Math.max(Math.round((p.x - g.x0) / g.h), 0), g.nx);
+			let j = Math.min(Math.max(Math.round((p.y - g.y0) / g.h), 0), g.ny);
+			return g.index(i, j);
+		}
+
+		// ---- main loop ----
+
+		mainLoop()
+		{
+			if (this.building)
+			{
+				let speed = parseInt(document.getElementById("speedInput").value);
+				for (let n = 0; n < speed && this.buildNext < this.grid.numNodes; n++)
+				{
+					this.grid.computeNode(this.buildNext, this.poly);
+					this.selected = this.buildNext;			// show the computation of the latest node
+					this.buildNext++;
+				}
+				if (this.buildNext >= this.grid.numNodes) this.building = false;
+				this.fieldDirty = true;
+			}
+			if (this.fieldDirty) this.updateFieldCache();
+
+			// query: interpolated value and (for comparison) the exact signed distance
+			this.q = this.grid.query(this.query);
+			this.exact = signedDistance(this.query, this.poly);
+
+			this.drawScene();
+			this.drawInfo();
+			this.updateStats();
+			window.requestAnimationFrame(this.mainLoop.bind(this));
+		}
+
+		// recompute the cached color image and isolines after the node values have changed
+		updateFieldCache()
+		{
+			let g = this.grid;
+			this.fieldCanvas.width = g.nx + 1;
+			this.fieldCanvas.height = g.ny + 1;
+			let fc = this.fieldCanvas.getContext("2d");
+			let img = fc.createImageData(g.nx + 1, g.ny + 1);
+			for (let k = 0; k < g.numNodes; k++)
+			{
+				let col = g.computed[k] ? fieldColor(g.phi[k]) : [235, 235, 235];
+				img.data.set([col[0], col[1], col[2], 255], 4 * k);
+			}
+			fc.putImageData(img, 0, 0);
+
+			this.isolines = [];
+			for (let level = -300; level <= 600; level += 20)
+				if (level !== 0) this.isolines.push({ level, segs: isolineSegments(g, level) });
+			this.zeroLine = isolineSegments(g, 0);
+			this.fieldDirty = false;
+		}
+
+		updateStats()
+		{
+			let g = this.grid, set = (id, text, color) => { let e = document.getElementById(id); e.textContent = text; e.style.color = color || ""; };
+			set("gridCells", `${g.nx} × ${g.ny}`);
+			set("gridNodes", g.numNodes);
+			set("numEdges", this.poly.length);
+			set("numTests", (g.numNodes * this.poly.length).toLocaleString("en-US"));
+			set("buildTime", this.building ? "building…" : `${this.buildTime.toFixed(2)} ms`);
+			set("phiExact", fmt(this.exact.phi));
+			if (this.q && this.q.ready)
+			{
+				set("phiInterp", fmt(this.q.phi));
+				set("phiError", fmt(Math.abs(this.q.phi - this.exact.phi)));
+				set("queryResult", this.q.phi < 0 ? "inside (collision)" : "outside", this.q.phi < 0 ? "#2563eb" : "#ea580c");
+			}
+			else
+			{
+				set("phiInterp", "-"); set("phiError", "-");
+				set("queryResult", this.q ? "cell not computed yet" : "outside the grid", "#6b7280");
+			}
+		}
+
+		// ---- scene ----
+
+		drawScene()
+		{
+			let c = this.c, g = this.grid, W = this.canvas.width, H = this.canvas.height;
+			c.clearRect(0, 0, W, H);
+			c.fillStyle = "#ffffff";
+			c.fillRect(0, 0, W, H);
+
+			// everything inside the grid domain
+			c.save();
+			c.beginPath();
+			c.rect(g.x0, g.y0, g.nx * g.h, g.ny * g.h);
+			c.clip();
+			if (this.show.field)
+			{
+				// draw the small node image scaled up with smoothing -> the browser interpolates the
+				// node colors bilinearly. Pixel centers must land on the nodes, hence the offset of h/2.
+				c.imageSmoothingEnabled = true;
+				c.globalAlpha = 0.6;
+				c.drawImage(this.fieldCanvas, 0, 0, g.nx + 1, g.ny + 1, g.x0 - g.h / 2, g.y0 - g.h / 2, (g.nx + 1) * g.h, (g.ny + 1) * g.h);
+				c.globalAlpha = 1;
+			}
+			if (this.show.iso)
+				for (let iso of this.isolines)
+				{
+					c.strokeStyle = iso.level < 0 ? "rgba(30,64,175,0.35)" : "rgba(154,52,18,0.30)";
+					c.lineWidth = 1;
+					this.strokeSegments(c, iso.segs);
+				}
+			c.restore();
+
+			// grid lines
+			c.strokeStyle = "rgba(100,116,139,0.35)";
+			c.lineWidth = 1;
+			c.beginPath();
+			for (let i = 0; i <= g.nx; i++) { c.moveTo(g.x0 + i * g.h, g.y0); c.lineTo(g.x0 + i * g.h, g.y0 + g.ny * g.h); }
+			for (let j = 0; j <= g.ny; j++) { c.moveTo(g.x0, g.y0 + j * g.h); c.lineTo(g.x0 + g.nx * g.h, g.y0 + j * g.h); }
+			c.stroke();
+
+			// grid nodes: blue inside, orange outside, gray if not computed yet
+			let r = Math.max(1.5, Math.min(4, g.h / 10));
+			for (let k = 0; k < g.numNodes; k++)
+			{
+				let { i, j } = g.nodeIJ(k), p = g.nodePos(i, j);
+				c.fillStyle = !g.computed[k] ? "#cbd5e1" : g.phi[k] < 0 ? "#1d4ed8" : "#c2410c";
+				c.beginPath(); c.arc(p.x, p.y, r, 0, 2 * Math.PI); c.fill();
+			}
+			if (this.show.values && g.h >= 40)
+			{
+				c.font = "13px Inter, sans-serif";
+				c.textAlign = "left";
+				for (let k = 0; k < g.numNodes; k++)
+				{
+					if (!g.computed[k]) continue;
+					let { i, j } = g.nodeIJ(k), p = g.nodePos(i, j);
+					c.fillStyle = g.phi[k] < 0 ? "#1e3a8a" : "#7c2d12";
+					c.fillText(Math.round(g.phi[k]), p.x + 3, p.y - 4);
+				}
+			}
+
+			// exact polygon (solid) and reconstructed zero level set of the field (dashed)
+			c.beginPath();
+			this.poly.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y));
+			c.closePath();
+			c.strokeStyle = "#111827";
+			c.lineWidth = 2.5;
+			c.stroke();
+			for (let p of this.poly) { c.fillStyle = "#111827"; c.fillRect(p.x - 3.5, p.y - 3.5, 7, 7); }
+			if (this.show.zero)
+			{
+				c.save();
+				c.strokeStyle = "#16a34a";
+				c.lineWidth = 3;
+				c.setLineDash([8, 5]);
+				this.strokeSegments(c, this.zeroLine);
+				c.restore();
+			}
+
+			this.drawNodeComputation();
+			this.drawQuery();
+
+			// header
+			c.fillStyle = "#111827";
+			c.font = "bold 19px Inter, sans-serif";
+			c.fillText(`Signed distance field: ${g.nx} × ${g.ny} cells (h = ${g.h} px), ${g.numNodes} nodes`, 14, 28);
+			c.font = "16px Inter, sans-serif";
+			c.fillStyle = "#374151";
+			c.fillText("Solid black: exact polygon     dashed green: reconstructed surface φ = 0", 14, 52);
+			c.fillText("Nodes: blue = inside (φ < 0), orange = outside (φ > 0)" + (this.building ? ", gray = not computed yet" : ""), 14, 74);
+
+			c.strokeStyle = "#999999";
+			c.lineWidth = 1;
+			c.strokeRect(0, 0, W, H);
+		}
+
+		strokeSegments(c, segs)
+		{
+			c.beginPath();
+			for (let [p, q] of segs) { c.moveTo(p.x, p.y); c.lineTo(q.x, q.y); }
+			c.stroke();
+		}
+
+		// construction of the selected node: closest point, empty circle and sign test ray
+		drawNodeComputation()
+		{
+			let c = this.c, g = this.grid;
+			if (this.selected === null || this.selected >= g.numNodes) return;
+			let { i, j } = g.nodeIJ(this.selected), x = g.nodePos(i, j);
+			let sd = signedDistance(x, this.poly);
+			this.selInfo = { i, j, x, sd };
+			c.save();
+			// sign test: ray in +x direction with its crossings
+			if (this.show.ray)
+			{
+				c.strokeStyle = "rgba(107,114,128,0.9)";
+				c.lineWidth = 1.5;
+				c.setLineDash([3, 4]);
+				c.beginPath(); c.moveTo(x.x, x.y); c.lineTo(this.canvas.width, x.y); c.stroke();
+				c.setLineDash([]);
+				c.strokeStyle = "#7c3aed";
+				c.lineWidth = 2.5;
+				for (let q of sd.crossings)
+				{
+					c.beginPath();
+					c.moveTo(q.x - 6, q.y - 6); c.lineTo(q.x + 6, q.y + 6);
+					c.moveTo(q.x - 6, q.y + 6); c.lineTo(q.x + 6, q.y - 6);
+					c.stroke();
+				}
+			}
+			// circle with radius |phi|: touches the polygon only at the closest point
+			c.strokeStyle = "rgba(124,58,237,0.7)";
+			c.lineWidth = 1.5;
+			c.setLineDash([6, 5]);
+			c.beginPath(); c.arc(x.x, x.y, sd.d, 0, 2 * Math.PI); c.stroke();
+			c.setLineDash([]);
+			// closest edge, closest point and the distance
+			let a = this.poly[sd.edge], b = this.poly[(sd.edge + 1) % this.poly.length];
+			c.strokeStyle = "#7c3aed";
+			c.lineWidth = 5;
+			c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+			c.lineWidth = 2.5;
+			c.beginPath(); c.moveTo(x.x, x.y); c.lineTo(sd.closest.x, sd.closest.y); c.stroke();
+			c.fillStyle = "#7c3aed";
+			c.beginPath(); c.arc(sd.closest.x, sd.closest.y, 5, 0, 2 * Math.PI); c.fill();
+			// the node itself
+			c.fillStyle = "#ffffff";
+			c.strokeStyle = "#7c3aed";
+			c.lineWidth = 3;
+			c.beginPath(); c.arc(x.x, x.y, 7, 0, 2 * Math.PI); c.fill(); c.stroke();
+			c.restore();
+		}
+
+		// query: cell, its corners, interpolated distance, normal and estimated closest point
+		drawQuery()
+		{
+			let c = this.c, g = this.grid, p = this.query, q = this.q;
+			c.save();
+			if (q)
+			{
+				// the cell containing p and its four corner nodes
+				let p00 = g.nodePos(q.i, q.j);
+				c.fillStyle = "rgba(250,204,21,0.25)";
+				c.fillRect(p00.x, p00.y, g.h, g.h);
+				c.strokeStyle = "#ca8a04";
+				c.lineWidth = 3;
+				c.strokeRect(p00.x, p00.y, g.h, g.h);
+				for (let [di, dj] of [[0, 0], [1, 0], [0, 1], [1, 1]])
+				{
+					let n = g.nodePos(q.i + di, q.j + dj);
+					c.beginPath(); c.arc(n.x, n.y, 6, 0, 2 * Math.PI); c.stroke();
+				}
+				if (q.ready)
+				{
+					// circle of radius |phi(p)|, estimated closest point and normal
+					c.strokeStyle = "rgba(17,24,39,0.6)";
+					c.lineWidth = 1.5;
+					c.setLineDash([4, 4]);
+					c.beginPath(); c.arc(p.x, p.y, Math.abs(q.phi), 0, 2 * Math.PI); c.stroke();
+					c.setLineDash([]);
+					c.strokeStyle = "#111827";
+					c.lineWidth = 2;
+					c.beginPath(); c.moveTo(p.x, p.y); c.lineTo(q.closest.x, q.closest.y); c.stroke();
+					c.fillStyle = "#16a34a";
+					c.beginPath(); c.arc(q.closest.x, q.closest.y, 6, 0, 2 * Math.PI); c.fill();
+					this.drawArrow(c, p, add(p, mul(q.n, 45)), "#111827", "n");
+					// exact closest point for comparison (hollow)
+					c.strokeStyle = "#111827";
+					c.lineWidth = 1.5;
+					c.beginPath(); c.arc(this.exact.closest.x, this.exact.closest.y, 6, 0, 2 * Math.PI); c.stroke();
+				}
+			}
+			// the query point (draggable)
+			c.fillStyle = "#ffffff";
+			c.strokeStyle = "#111827";
+			c.lineWidth = 3;
+			c.beginPath(); c.arc(p.x, p.y, 9, 0, 2 * Math.PI); c.fill(); c.stroke();
+			c.fillStyle = "#111827";
+			c.font = "bold 17px Inter, sans-serif";
+			c.fillText("p", p.x + 12, p.y - 10);
+			c.restore();
+		}
+
+		drawArrow(c, from, to, color, label)
+		{
+			let d = normalize(sub(to, from)), n = perp(d);
+			c.save();
+			c.strokeStyle = color; c.fillStyle = color; c.lineWidth = 2.5;
+			c.beginPath(); c.moveTo(from.x, from.y); c.lineTo(to.x, to.y); c.stroke();
+			let h1 = add(sub(to, mul(d, 10)), mul(n, 5)), h2 = sub(sub(to, mul(d, 10)), mul(n, 5));
+			c.beginPath(); c.moveTo(to.x, to.y); c.lineTo(h1.x, h1.y); c.lineTo(h2.x, h2.y); c.closePath(); c.fill();
+			if (label)
+			{
+				c.font = "italic bold 17px Inter, sans-serif";
+				let lp = add(to, mul(d, 12));
+				c.textAlign = "center";
+				c.fillText(label, lp.x, lp.y + 6);
+				c.textAlign = "left";
+			}
+			c.restore();
+		}
+
+		// ---- info panel: construction (left) and query (right) step by step ----
+
+		drawInfo()
+		{
+			let c = this.ic, W = this.infoCanvas.width, H = this.infoCanvas.height;
+			c.clearRect(0, 0, W, H);
+			c.fillStyle = "#ffffff";
+			c.fillRect(0, 0, W, H);
+			c.strokeStyle = "#e5e7eb";
+			c.beginPath(); c.moveTo(W / 2, 12); c.lineTo(W / 2, H - 12); c.stroke();
+			this.drawConstructionInfo(c, 16);
+			this.drawQueryInfo(c, W / 2 + 16);
+			c.strokeStyle = "#999999";
+			c.lineWidth = 1;
+			c.strokeRect(0, 0, W, H);
+		}
+
+		// helper: draw lines of text; each line is [text, color, bold]
+		textLines(c, x, y, lines, dy = 25)
+		{
+			for (let [text, color, bold] of lines)
+			{
+				c.font = (bold ? "bold " : "") + "16px Inter, sans-serif";
+				c.fillStyle = color || "#111827";
+				c.fillText(text, x, y);
+				y += dy;
+			}
+		}
+
+		drawConstructionInfo(c, x)
+		{
+			c.font = "bold 18px Inter, sans-serif";
+			c.fillStyle = "#7c3aed";
+			c.fillText("1. Construction: value of a grid node", x, 30);
+			if (!this.selInfo) return;
+			let { i, j, x: xn, sd } = this.selInfo, g = this.grid;
+			let feature = sd.t === 0 ? `vertex ${sd.edge}` : sd.t === 1 ? `vertex ${(sd.edge + 1) % this.poly.length}` : `edge interior (t = ${sd.t.toFixed(2)})`;
+			let n = sd.crossings.length;
+			this.textLines(c, x, 62, [
+				[`node (i, j) = (${i}, ${j}) at x_ij = (${xn.x.toFixed(0)}, ${xn.y.toFixed(0)})`, null, true],
+				["Unsigned distance = minimum over all " + this.poly.length + " edges:", "#374151"],
+				[`   closest edge: e${sd.edge}, closest point on: ${feature}`, "#374151"],
+				[`   d = ‖x_ij − c‖ = ${sd.d.toFixed(1)}`, "#374151"],
+				[`Sign: ray in +x direction crosses the polygon ${n}×`, "#374151"],
+				[`   → ${n % 2 === 1 ? "odd → inside" : "even → outside"}`, sd.inside ? "#1d4ed8" : "#c2410c", true],
+				[`φ_ij = ${sd.inside ? "−d" : "+d"} = ${fmt(sd.phi)}`, sd.inside ? "#1d4ed8" : "#c2410c", true],
+				[`Cost: ${this.poly.length} point–edge tests per node,`, "#6b7280"],
+				[`   ${this.poly.length} · ${g.numNodes} = ${(this.poly.length * g.numNodes).toLocaleString("en-US")} for the whole grid (done once)`, "#6b7280"]
+			], 33);
+			c.font = "14px Inter, sans-serif";
+			c.fillStyle = "#6b7280";
+			c.fillText("Click any grid node in the scene to inspect it.", x, 380);
+		}
+
+		drawQueryInfo(c, x)
+		{
+			c.font = "bold 18px Inter, sans-serif";
+			c.fillStyle = "#ca8a04";
+			c.fillText("2. Query: interpolate the field at p", x, 30);
+			let q = this.q, p = this.query;
+			if (!q) { this.textLines(c, x, 66, [["p lies outside the grid: no value available.", "#6b7280"]]); return; }
+
+			// small diagram of the cell with the corner values and the two interpolation steps
+			const S = 130, dx = x + 82, dy = 56;
+			c.fillStyle = "rgba(250,204,21,0.18)";
+			c.fillRect(dx, dy, S, S);
+			c.strokeStyle = "#ca8a04"; c.lineWidth = 2;
+			c.strokeRect(dx, dy, S, S);
+			let ax = dx + q.s * S, py = dy + q.t * S;
+			c.strokeStyle = "#6b7280"; c.lineWidth = 1.5;
+			c.setLineDash([4, 3]);
+			c.beginPath(); c.moveTo(ax, dy); c.lineTo(ax, dy + S); c.stroke();
+			c.setLineDash([]);
+			c.fillStyle = "#ca8a04";
+			for (let yy of [dy, dy + S]) { c.beginPath(); c.arc(ax, yy, 4.5, 0, 2 * Math.PI); c.fill(); }
+			c.fillStyle = "#ffffff"; c.strokeStyle = "#111827"; c.lineWidth = 2.5;
+			c.beginPath(); c.arc(ax, py, 6, 0, 2 * Math.PI); c.fill(); c.stroke();
+			c.font = "bold 14px Inter, sans-serif";
+			c.fillStyle = "#111827";
+			c.fillText("a", ax + 5, dy - 5);
+			c.fillText("b", ax + 5, dy + S + 15);
+			c.fillText("p", ax + 9, py + 5);
+			c.font = "13px Inter, sans-serif";
+			let val = v => q.ready ? fmt(v) : "?";
+			c.textAlign = "right";
+			c.fillText(`φ00 = ${val(q.f00)}`, dx - 4, dy - 8 > 44 ? dy - 8 : dy + 4);
+			c.fillText(`φ01 = ${val(q.f01)}`, dx - 4, dy + S + 16);
+			c.textAlign = "left";
+			c.fillText(`φ10 = ${val(q.f10)}`, dx + S + 4, dy + 4);
+			c.fillText(`φ11 = ${val(q.f11)}`, dx + S + 4, dy + S + 16);
+
+			this.textLines(c, dx + S + 82, dy + 34, [
+				[`cell (i, j) = (${q.i}, ${q.j})`, null, true],
+				[`s = ${q.s.toFixed(2)},  t = ${q.t.toFixed(2)}`, "#374151"],
+				[`p = (${p.x.toFixed(0)}, ${p.y.toFixed(0)})`, "#374151"]
+			], 25);
+
+			if (!q.ready)
+			{
+				this.textLines(c, x, 240, [["The corner values of this cell are not computed yet.", "#6b7280"]]);
+				return;
+			}
+			let s = q.s, t = q.t;
+			let term = (w, v) => `${w.toFixed(2)}·${v < 0 ? "(" + fmt(v) + ")" : fmt(v)}`;
+			let inside = q.phi < 0;
+			this.textLines(c, x, 228, [
+				[`a = (1−s) φ00 + s φ10 = ${term(1 - s, q.f00)} + ${term(s, q.f10)} = ${fmt(q.a)}`, "#374151"],
+				[`b = (1−s) φ01 + s φ11 = ${term(1 - s, q.f01)} + ${term(s, q.f11)} = ${fmt(q.b)}`, "#374151"],
+				[`φ(p) = (1−t) a + t b = ${fmt(q.phi)}    (exact: ${fmt(this.exact.phi)})`, null, true],
+				[`∇φ = (${fmt(q.grad.x, 2)}, ${fmt(q.grad.y, 2)}),  ‖∇φ‖ = ${len(q.grad).toFixed(2)},  n = ∇φ / ‖∇φ‖`, "#374151"],
+				[`closest point ≈ p − φ(p) n = (${q.closest.x.toFixed(0)}, ${q.closest.y.toFixed(0)})`, "#16a34a"],
+				[inside ? `φ(p) < 0 → collision, penetration depth ${fmt(-q.phi)}, push out along n`
+				        : "φ(p) > 0 → p is outside, no collision", inside ? "#1d4ed8" : "#c2410c", true]
+			], 27);
+		}
+
+		// ---- interaction ----
+
+		getMousePos(event)
+		{
+			const rect = this.canvas.getBoundingClientRect();
+			return {
+				x: (event.clientX - rect.left) * this.canvas.width / rect.width,
+				y: (event.clientY - rect.top) * this.canvas.height / rect.height
+			};
+		}
+
+		// priority: query point > polygon vertex > grid node > move the query point there
+		mouseDown(event)
+		{
+			let pos = this.getMousePos(event), g = this.grid;
+			if (len(sub(pos, this.query)) < 14) { this.drag = { type: 'query' }; return; }
+			let v = this.poly.findIndex(p => len(sub(p, pos)) < 10);
+			if (v >= 0) { this.drag = { type: 'vertex', index: v }; return; }
+			let k = this.nearestNode(pos), { i, j } = g.nodeIJ(k);
+			if (len(sub(g.nodePos(i, j), pos)) < Math.min(10, g.h / 3)) { this.selected = k; return; }
+			this.query = this.clampToGrid(pos);
+			this.drag = { type: 'query' };
+		}
+
+		mouseMove(event)
+		{
+			if (!this.drag) return;
+			let pos = this.getMousePos(event);
+			if (this.drag.type === 'query') this.query = this.clampToGrid(pos);
+			else
+			{
+				// moving a vertex changes the shape -> the whole field has to be recomputed
+				this.poly[this.drag.index] = { x: Math.min(Math.max(pos.x, 0), this.canvas.width), y: Math.min(Math.max(pos.y, 92), this.canvas.height) };
+				this.buildAll();
+			}
+		}
+
+		clampToGrid(p)
+		{
+			let g = this.grid;
+			return { x: Math.min(Math.max(p.x, g.x0), g.x0 + g.nx * g.h), y: Math.min(Math.max(p.y, g.y0), g.y0 + g.ny * g.h) };
+		}
+	}
+
+	gui = new GUI();
+</script>
+
+</body>
+</html>
