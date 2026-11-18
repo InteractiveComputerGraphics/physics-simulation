@@ -1,0 +1,829 @@
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://interactivecomputergraphics.github.io/physics-simulation/examples/style.css">
+	<script type="text/x-mathjax-config">
+	  MathJax.Hub.Config({
+		extensions: ["tex2jax.js"],
+		jax: ["input/TeX", "output/HTML-CSS"],
+		tex2jax: {
+		  inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+		  displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+		  processEscapes: true
+		},
+		"HTML-CSS": { fonts: ["TeX"] }
+	  });
+	</script>
+	<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js"></script>
+	<title>Spatial Hashing</title>
+	<style>
+		#compareTable { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 8px; }
+		#compareTable th, #compareTable td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; text-align: right; }
+		#compareTable th:first-child, #compareTable td:first-child { text-align: left; }
+		#compareTable th { color: #4b5563; font-weight: 600; background: #f5f7ff; }
+		#compareTable tr.highlight { background: #e8eefc; font-weight: 600; }
+		.theory table.costs { border-collapse: collapse; margin: 10px 0; font-size: 0.92rem; }
+		.theory table.costs th, .theory table.costs td { border: 1px solid #d1d5db; padding: 5px 10px; text-align: left; vertical-align: top; }
+		.theory table.costs th { background: #f5f7ff; }
+	</style>
+</head>
+<body>
+
+<header class="page-header">
+	<h1>Spatial Hashing</h1>
+</header>
+
+<main>
+	<!-- Simulation panel: canvas + controls -->
+	<table style="align_center;border-radius: 20px;padding: 20px;margin:auto">
+		<col width="70%">
+		<col width="30%">
+		<tr>
+			<td>
+				<div class="card sim-panel">
+					<div class="sim-canvas-wrap">
+						<canvas id="simCanvas" width="1024" height="700" style="border:2px solid #000000;border-radius: 20px;background-color:#FFFFFF">Your browser does not support the HTML5 canvas tag.</canvas>
+					</div>
+					<p class="canvas-hint">
+						(Deformable) triangle meshes move through each other. Red vertices penetrate a triangle of another (or the same) mesh, red triangles are penetrated.
+						Click a triangle to see how spatial hashing finds the vertices that have to be tested against it.
+					</p>
+					<div class="sim-canvas-wrap" style="margin-top:6px">
+						<canvas id="hashCanvas" width="1024" height="440" style="border:2px solid #000000;border-radius: 20px;background-color:#FFFFFF"></canvas>
+					</div>
+					<p class="canvas-hint">
+						<b>Left:</b> the hash table. Each small square is one bucket, darker means more vertices. A purple dot marks a bucket that contains vertices from different grid cells (a <em>hash collision</em>), the buckets read for the selected triangle have an orange frame.
+						<b>Right:</b> the query of the selected triangle, step by step.
+					</p>
+					<table id="compareTable">
+						<thead>
+							<tr><th>Method</th><th>Data structure update</th><th>Box / bucket tests</th><th>Exact tests</th><th>Collisions</th><th>Time (avg.)</th></tr>
+						</thead>
+						<tbody>
+							<tr id="row_brute"><td>Brute force (all vertex–triangle pairs)</td><td>—</td><td class="b"></td><td class="e"></td><td class="c"></td><td class="t"></td></tr>
+							<tr id="row_rebuild"><td>BVH, rebuilt every step</td><td>build</td><td class="b"></td><td class="e"></td><td class="c"></td><td class="t"></td></tr>
+							<tr id="row_refit"><td>BVH, built once, refitted</td><td>refit</td><td class="b"></td><td class="e"></td><td class="c"></td><td class="t"></td></tr>
+							<tr id="row_hash" class="highlight"><td>Spatial hashing</td><td>insert vertices</td><td class="b"></td><td class="e"></td><td class="c"></td><td class="t"></td></tr>
+						</tbody>
+					</table>
+					<p class="canvas-hint">
+						All four methods are run on the same configuration in every step and must find the same collisions.
+						"Box / bucket tests": AABB tests for the BVHs, vertices read from the buckets for spatial hashing. "Exact tests": point-in-triangle tests.
+					</p>
+				</div>
+			</td>
+			<td>
+				<div class="controls-panel">
+					<h3>Controls</h3>
+					<div class="controls-grid">
+						<label>Vertices / triangles</label>
+						<span class="stat-value"><span id="numElems">-</span></span>
+
+						<label>Cell size l</label>
+						<span class="stat-value"><span id="cellSize">-</span></span>
+
+						<label>Hash table size n</label>
+						<span class="stat-value"><span id="tableSize">-</span></span>
+
+						<label>Load factor (vertices / n)</label>
+						<span class="stat-value"><span id="loadFactor">-</span></span>
+
+						<label>Non-empty buckets</label>
+						<span class="stat-value"><span id="usedBuckets">-</span></span>
+
+						<label>Max. vertices per bucket</label>
+						<span class="stat-value"><span id="maxBucket">-</span></span>
+
+						<label>Buckets with hash collisions</label>
+						<span class="stat-value"><span id="collBuckets">-</span></span>
+
+						<label>Refitted BVH area</label>
+						<span class="stat-value"><span id="bvhQuality">-</span></span>
+
+						<label for="objInput">Objects</label>
+						<select onchange="gui.restart()" id="objInput">
+							<option value="2" selected="selected">2</option>
+							<option value="3">3</option>
+							<option value="5">5</option>
+							<option value="8">8</option>
+						</select>
+
+						<label for="resInput">Mesh resolution</label>
+						<select onchange="gui.restart()" id="resInput">
+							<option value="4" selected="selected">4 × 4 vertices</option>
+							<option value="7">7 × 7 vertices</option>
+							<option value="10">10 × 10 vertices</option>
+							<option value="14">14 × 14 vertices</option>
+						</select>
+
+						<label for="cellInput">Cell size l</label>
+						<select onchange="gui.updateCellSize()" id="cellInput">
+							<option value="0.5">0.5 × avg. edge length</option>
+							<option value="1" selected="selected">1 × avg. edge length</option>
+							<option value="2">2 × avg. edge length</option>
+							<option value="4">4 × avg. edge length</option>
+						</select>
+
+						<label for="tableInput">Hash table size n</label>
+						<select onchange="gui.tableSize = parseInt(this.value)" id="tableInput">
+							<option value="31">31</option>
+							<option value="101">101</option>
+							<option value="499" selected="selected">499</option>
+							<option value="1999">1999</option>
+							<option value="10007">10007</option>
+						</select>
+
+						<label for="deformInput">Deformation</label>
+						<select onchange="gui.deform = parseFloat(this.value)" id="deformInput">
+							<option value="0" selected="selected">none (rigid)</option>
+							<option value="0.06">moderate</option>
+							<option value="0.13">strong (self-collisions)</option>
+						</select>
+
+						<label for="animateInput">Animate</label>
+						<input onchange="gui.animate = this.checked" id="animateInput" type="checkbox" checked>
+
+						<label for="gridInput">Show grid</label>
+						<input onchange="gui.show.grid = this.checked" id="gridInput" type="checkbox" checked>
+
+						<label for="hashColorInput">Color cells by hash value</label>
+						<input onchange="gui.show.hashColors = this.checked" id="hashColorInput" type="checkbox">
+
+						<label for="bvhInput">Show BVH boxes (refitted)</label>
+						<input onchange="gui.show.bvh = this.checked" id="bvhInput" type="checkbox">
+
+						<div class="full-width">
+							<button onclick="gui.restart()">&#9654; Restart</button>
+						</div>
+					</div>
+				</div>
+			</td>
+		</tr>
+	</table>
+
+	<!-- Theory section -->
+	<div class="card theory">
+		<h2>Spatial hashing for collision detection</h2>
+		<p>
+		Bounding volume hierarchies (see the <a href="bvh.html">BVH</a> example) are very efficient for rigid objects: the hierarchy is built once and only refitted when the object moves, and refitting a rigid object keeps all boxes tight. For <b>deformable objects</b>, this no longer works well. After refitting, the boxes still contain their primitives, but primitives that were close to each other in the beginning (and therefore were grouped together in the tree) can drift apart, so the boxes grow and overlap more and more and the tree has to be rebuilt from time to time. Self-collisions are also difficult, since a deformable object's tree must be tested against itself. Watch the statistic "Refitted BVH area" (the summed area of all boxes of the refitted tree relative to a freshly built tree) and switch on "Show BVH boxes" to see this.
+		</p>
+		<p>
+		<b>Spatial hashing</b> [THM+03] avoids a hierarchy altogether. It uses a uniform grid, which is rebuilt from scratch in every time step at very low cost, and it handles collisions between different objects and self-collisions in the same way.
+		</p>
+
+		<h3>Uniform grid and hash function</h3>
+		<p>
+		Space is divided into square cells (cubes in 3D) of size $l$. A point $\mathbf x$ lies in the cell with the integer coordinates
+		$$(i, j) = \left(\left\lfloor \frac{x}{l} \right\rfloor, \left\lfloor \frac{y}{l} \right\rfloor\right).$$
+		Primitives can only collide if they occupy common cells. Storing an explicit grid would require memory for the whole simulation domain, although only a few cells are occupied, and the domain would have to be known in advance. Instead, the cells of the conceptually <em>infinite</em> grid are mapped to a hash table with $n$ buckets by a hash function, e.g.
+		$$h(i, j, k) = \big( (i \cdot p_1) \oplus (j \cdot p_2) \oplus (k \cdot p_3) \big) \bmod n$$
+		with the large primes $p_1 = 73856093$, $p_2 = 19349663$, $p_3 = 83492791$ and the bitwise exclusive or $\oplus$ [THM+03] (in 2D, the $k$-term is omitted). The memory only depends on $n$, not on the size of the domain. Different cells can be mapped to the same bucket; such <b>hash collisions</b> do not cause wrong results but only additional candidates, which are rejected by the subsequent tests. Switch on "Color cells by hash value" and select a small table size: cells with the same color share a bucket.
+		</p>
+
+		<h3>The algorithm</h3>
+		<p>Following Teschner et al. [THM+03], collisions are detected as <em>vertices that penetrate a triangle</em> (in 3D: a tetrahedron) in two passes:</p>
+		<ol>
+			<li><b>Insert all vertices:</b> for every vertex, compute its cell and its hash value and append the vertex to the corresponding bucket. Instead of clearing the table in every step, each bucket stores a <em>time stamp</em> and is treated as empty if the stamp is outdated.</li>
+			<li><b>Query all triangles:</b> for every triangle, compute its axis-aligned bounding box (AABB) and the range of cells it overlaps. For each of these cells, compute the hash value and test all vertices in the bucket:
+				<ul>
+					<li>skip vertices of the triangle itself (and vertices that were already tested for this triangle, which happens if two cells are mapped to the same bucket),</li>
+					<li>reject vertices outside the triangle's AABB (this also removes all vertices that only got into the bucket by a hash collision),</li>
+					<li>perform the exact point-in-triangle test for the remaining vertices.</li>
+				</ul>
+			</li>
+		</ol>
+		<p>
+		Both passes are linear in the number of primitives (for well-chosen parameters), there is no preprocessing, and the cost does not depend on how much the objects deform. Since every triangle is tested against all vertices in its cells, regardless of the object they belong to, <b>self-collisions</b> are detected without any extra effort (select "strong" deformation). Both passes are also easy to parallelize.
+		</p>
+
+		<h3>Parameters</h3>
+		<ul>
+			<li><b>Cell size $l$.</b> If the cells are too small, every triangle overlaps many cells, so many buckets have to be read. If they are too large, each cell contains many vertices that do not collide but must be tested. A cell size in the order of the average edge length is a good choice [THM+03]. Compare the "bucket tests" for the different cell sizes.</li>
+			<li><b>Table size $n$.</b> A small table causes many hash collisions and long buckets. A table that is larger than the number of vertices (load factor $< 1$) keeps collisions rare. Prime table sizes distribute the hash values more evenly.</li>
+			<li><b>Primitive sizes.</b> A uniform grid works best if all primitives have a similar size. A very large triangle covers many cells; very different sizes would require several grids. BVHs adapt automatically to non-uniform sizes and distributions.</li>
+		</ul>
+
+		<h3>BVH or spatial hashing?</h3>
+		<table class="costs">
+			<tr><th></th><th>BVH</th><th>Spatial hashing</th></tr>
+			<tr><td>Preprocessing</td><td>build the hierarchy, $O(n \log n)$</td><td>none</td></tr>
+			<tr><td>Update per step</td><td>refit $O(n)$ (quality degrades for deformations), or rebuild $O(n \log n)$</td><td>insert all vertices, $O(n)$; quality independent of the motion</td></tr>
+			<tr><td>Memory</td><td>$\approx 2n$ nodes</td><td>table of fixed size $n$ plus entries</td></tr>
+			<tr><td>Non-uniform sizes / distributions</td><td>adapts automatically</td><td>needs similar primitive sizes</td></tr>
+			<tr><td>Self-collisions</td><td>need special treatment (adjacent primitives always overlap)</td><td>no special treatment</td></tr>
+			<tr><td>Other queries</td><td>ray casts, distance queries, far-apart objects</td><td>local queries only</td></tr>
+			<tr><td>Typical use</td><td>rigid bodies, static scenes, ray tracing</td><td>deformable objects, cloth, particles (<a href="neighborhood_search.html">SPH neighborhood search</a>)</td></tr>
+		</table>
+		<p>
+		Note that the timings in this example are small and noisy, since the scenes are small and JavaScript is not the fastest language for this. The counts of box, bucket and exact tests are more meaningful.
+		</p>
+
+		<h3>References</h3>
+		<ul>
+		<li>[THM+03] Matthias Teschner, Bruno Heidelberger, Matthias M&uuml;ller, Danat Pomeranets, Markus Gross. Optimized Spatial Hashing for Collision Detection of Deformable Objects. In Proceedings of Vision, Modeling, and Visualization, 2003.</li>
+		<li>[TKH+05] Matthias Teschner, Stefan Kimmerle, Bruno Heidelberger, Gabriel Zachmann, Laks Raghupathi, Arnulph Fuhrmann, Marie-Paule Cani, Fran&ccedil;ois Faure, Nadia Magnenat-Thalmann, Wolfgang Strasser, Pascal Volino. Collision Detection for Deformable Objects. Computer Graphics Forum, 2005.</li>
+		<li>[Eri04] Christer Ericson. Real-Time Collision Detection. Morgan Kaufmann, 2004.</li>
+		</ul>
+	</div>
+
+</main>
+
+<script id="simulation_code" type="text/javascript">
+	// =====================================================================================
+	//  Overview
+	//  --------
+	//  1. Deformable triangle meshes (procedural motion + deformation, no simulation).
+	//  2. Exact test: is a vertex inside a triangle (that it does not belong to)?
+	//  3. Four methods to find all penetrating vertex-triangle pairs:
+	//       brute force, BVH (rebuilt every step), BVH (built once, refitted), spatial hashing.
+	//  4. GUI: drawing, hash table visualization, statistics.
+	//
+	//  Coordinates: canvas pixels, x right, y down.
+	// =====================================================================================
+
+	// =====================================================================================
+	//  1. Deformable meshes
+	// =====================================================================================
+
+	// a square triangle mesh with res x res (slightly jittered) vertices, centered at the origin
+	function makeMesh(res, size)
+	{
+		let verts = [], tris = [], h = size / (res - 1);
+		for (let j = 0; j < res; j++)
+			for (let i = 0; i < res; i++)
+				verts.push({ x: -size / 2 + i * h + (Math.random() - 0.5) * 0.25 * h, y: -size / 2 + j * h + (Math.random() - 0.5) * 0.25 * h });
+		let id = (i, j) => j * res + i;
+		for (let j = 0; j < res - 1; j++)
+			for (let i = 0; i < res - 1; i++)
+			{
+				tris.push([id(i, j), id(i + 1, j), id(i, j + 1)]);
+				tris.push([id(i + 1, j), id(i + 1, j + 1), id(i, j + 1)]);
+			}
+		return { verts, tris };
+	}
+
+	// =====================================================================================
+	//  2. Exact test
+	// =====================================================================================
+
+	// Strict point-in-triangle test (works for both orientations): p is inside if it lies on
+	// the same side of all three edges. Points on the boundary do not count as inside.
+	function pointInTriangle(p, a, b, c)
+	{
+		let d1 = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+		let d2 = (c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x);
+		let d3 = (a.x - c.x) * (p.y - c.y) - (a.y - c.y) * (p.x - c.x);
+		const eps = 1e-9;
+		return (d1 > eps && d2 > eps && d3 > eps) || (d1 < -eps && d2 < -eps && d3 < -eps);
+	}
+
+	function triBox(P, t)
+	{
+		let a = P[t[0]], b = P[t[1]], c = P[t[2]];
+		return { minX: Math.min(a.x, b.x, c.x), maxX: Math.max(a.x, b.x, c.x), minY: Math.min(a.y, b.y, c.y), maxY: Math.max(a.y, b.y, c.y) };
+	}
+	function inBox(p, b) { return p.x >= b.minX && p.x <= b.maxX && p.y >= b.minY && p.y <= b.maxY; }
+	function isIncident(v, t) { return t[0] === v || t[1] === v || t[2] === v; }
+
+	// =====================================================================================
+	//  3a. Brute force: every vertex against every triangle
+	// =====================================================================================
+	function bruteForce(P, T)
+	{
+		let pairs = [], exact = 0;
+		for (let ti = 0; ti < T.length; ti++)
+		{
+			let t = T[ti];
+			for (let v = 0; v < P.length; v++)
+			{
+				if (isIncident(v, t)) continue;
+				exact++;
+				if (pointInTriangle(P[v], P[t[0]], P[t[1]], P[t[2]])) pairs.push([v, ti]);
+			}
+		}
+		return { pairs, boxTests: 0, exact };
+	}
+
+	// =====================================================================================
+	//  3b. BVH over all triangles (leaf = one triangle), query with every vertex
+	// =====================================================================================
+	function unionBox(a, b) { return { minX: Math.min(a.minX, b.minX), maxX: Math.max(a.maxX, b.maxX), minY: Math.min(a.minY, b.minY), maxY: Math.max(a.maxY, b.maxY) }; }
+	function boxArea(b) { return (b.maxX - b.minX) * (b.maxY - b.minY); }
+
+	// top-down build: split at the median of the triangle centroids along the longer axis
+	function buildBVH(P, T)
+	{
+		let items = T.map((t, i) => ({ i, cx: (P[t[0]].x + P[t[1]].x + P[t[2]].x) / 3, cy: (P[t[0]].y + P[t[1]].y + P[t[2]].y) / 3 }));
+		function build(list)
+		{
+			if (list.length === 1) return { tri: list[0].i, box: triBox(P, T[list[0].i]) };
+			let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+			for (let it of list) { minX = Math.min(minX, it.cx); maxX = Math.max(maxX, it.cx); minY = Math.min(minY, it.cy); maxY = Math.max(maxY, it.cy); }
+			let key = (maxX - minX) >= (maxY - minY) ? 'cx' : 'cy';
+			list.sort((a, b) => a[key] - b[key]);
+			let mid = list.length >> 1;
+			let left = build(list.slice(0, mid)), right = build(list.slice(mid));
+			return { left, right, box: unionBox(left.box, right.box) };
+		}
+		return build(items);
+	}
+
+	// bottom-up refit: the tree topology stays, only the boxes are recomputed
+	function refitBVH(node, P, T)
+	{
+		if (node.tri !== undefined) node.box = triBox(P, T[node.tri]);
+		else node.box = unionBox(refitBVH(node.left, P, T), refitBVH(node.right, P, T));
+		return node.box;
+	}
+
+	function totalArea(node) { return boxArea(node.box) + (node.tri === undefined ? totalArea(node.left) + totalArea(node.right) : 0); }
+
+	// for every vertex: traverse the tree, descend only into boxes that contain the vertex
+	function queryBVH(root, P, T)
+	{
+		let pairs = [], boxTests = 0, exact = 0, stack = [];
+		for (let v = 0; v < P.length; v++)
+		{
+			stack.push(root);
+			while (stack.length)
+			{
+				let node = stack.pop();
+				boxTests++;
+				if (!inBox(P[v], node.box)) continue;
+				if (node.tri !== undefined)
+				{
+					let t = T[node.tri];
+					if (isIncident(v, t)) continue;
+					exact++;
+					if (pointInTriangle(P[v], P[t[0]], P[t[1]], P[t[2]])) pairs.push([v, node.tri]);
+				}
+				else stack.push(node.left, node.right);
+			}
+		}
+		return { pairs, boxTests, exact };
+	}
+
+	// =====================================================================================
+	//  3c. Spatial hashing [THM+03]
+	// =====================================================================================
+	const P1 = 73856093, P2 = 19349663;
+
+	// cell coordinates of a point
+	function cellOf(x, y, l) { return [Math.floor(x / l), Math.floor(y / l)]; }
+
+	// hash function: (i p1 xor j p2) mod n. Math.imul multiplies as 32-bit integers (with
+	// overflow, like int in C++), the result of xor can be negative -> make it positive.
+	function hashCell(i, j, n)
+	{
+		let h = (Math.imul(i, P1) ^ Math.imul(j, P2)) % n;
+		return h < 0 ? h + n : h;
+	}
+
+	class SpatialHash
+	{
+		constructor(n)
+		{
+			this.n = n;
+			this.stamp = new Int32Array(n).fill(-1);	// time stamp per bucket (outdated stamp = empty bucket)
+			this.items = Array.from({ length: n }, () => []);
+			this.time = 0;
+		}
+
+		// pass 1: insert all vertices into the buckets of their cells
+		insert(P, l)
+		{
+			this.time++;
+			for (let v = 0; v < P.length; v++)
+			{
+				let [i, j] = cellOf(P[v].x, P[v].y, l);
+				let h = hashCell(i, j, this.n);
+				if (this.stamp[h] !== this.time) { this.stamp[h] = this.time; this.items[h].length = 0; }	// "clear" lazily
+				this.items[h].push(v);
+			}
+		}
+
+		bucket(h) { return this.stamp[h] === this.time ? this.items[h] : []; }
+
+		// pass 2: for every triangle, test the vertices in the buckets of all cells its AABB overlaps
+		query(P, T, l)
+		{
+			let pairs = [], bucketTests = 0, exact = 0;
+			let seen = new Int32Array(P.length).fill(-1);		// vertices already tested for the current triangle
+			for (let ti = 0; ti < T.length; ti++)
+			{
+				let t = T[ti], box = triBox(P, t);
+				let [i0, j0] = cellOf(box.minX, box.minY, l), [i1, j1] = cellOf(box.maxX, box.maxY, l);
+				for (let j = j0; j <= j1; j++)
+					for (let i = i0; i <= i1; i++)
+						for (let v of this.bucket(hashCell(i, j, this.n)))
+						{
+							if (seen[v] === ti) continue;		// two cells may share a bucket
+							seen[v] = ti;
+							bucketTests++;
+							if (isIncident(v, t) || !inBox(P[v], box)) continue;	// own vertex / outside the AABB
+							exact++;
+							if (pointInTriangle(P[v], P[t[0]], P[t[1]], P[t[2]])) pairs.push([v, ti]);
+						}
+			}
+			return { pairs, boxTests: bucketTests, exact };
+		}
+
+		// the same query for ONE triangle, but recording every step (for the visualization)
+		explain(P, T, ti, l)
+		{
+			let t = T[ti], box = triBox(P, t);
+			let [i0, j0] = cellOf(box.minX, box.minY, l), [i1, j1] = cellOf(box.maxX, box.maxY, l);
+			let cells = [], cand = new Map();
+			for (let j = j0; j <= j1; j++)
+				for (let i = i0; i <= i1; i++)
+				{
+					let h = hashCell(i, j, this.n), entries = this.bucket(h), foreign = 0;
+					for (let v of entries)
+					{
+						let [ci, cj] = cellOf(P[v].x, P[v].y, l);
+						let fromOtherCell = ci !== i || cj !== j;
+						if (fromOtherCell) foreign++;
+						if (cand.has(v)) continue;
+						let status = isIncident(v, t) ? 'own'
+						           : !inBox(P[v], box) ? (fromOtherCell && !(ci >= i0 && ci <= i1 && cj >= j0 && cj <= j1) ? 'hashcoll' : 'aabb')
+						           : pointInTriangle(P[v], P[t[0]], P[t[1]], P[t[2]]) ? 'hit' : 'miss';
+						cand.set(v, status);
+					}
+					cells.push({ i, j, h, count: entries.length, foreign });
+				}
+			return { box, cells, cand, range: [i0, j0, i1, j1] };
+		}
+	}
+
+	// =====================================================================================
+	//  4. GUI
+	// =====================================================================================
+	const OBJ_COLORS = ["#4673e5", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#0891b2", "#84cc16", "#64748b"];
+	const STATUS = {
+		hit:      { color: "#dc2626", text: "inside the triangle → collision" },
+		miss:     { color: "#16a34a", text: "in the AABB, exact test negative" },
+		aabb:     { color: "#9ca3af", text: "outside the AABB → rejected" },
+		hashcoll: { color: "#9333ea", text: "hash collision (other cell) → rejected" },
+		own:      { color: "#111827", text: "vertex of the triangle → skipped" }
+	};
+
+	class GUI
+	{
+		constructor()
+		{
+			this.canvas = document.getElementById("simCanvas");
+			this.c = this.canvas.getContext("2d");
+			this.hashCanvas = document.getElementById("hashCanvas");
+			this.hc = this.hashCanvas.getContext("2d");
+			this.show = { grid: true, hashColors: false, bvh: false };
+			this.animate = true;
+			this.tableSize = parseInt(document.getElementById("tableInput").value);
+			this.deform = parseFloat(document.getElementById("deformInput").value);
+			this.timeSums = {};
+			this.frames = 0;
+			this.canvas.addEventListener("mousedown", this.mouseDown.bind(this), false);
+			this.restart();
+			this.mainLoop();
+		}
+
+		// create the objects; each one moves on its own Lissajous curve and rotates
+		restart()
+		{
+			let num = parseInt(document.getElementById("objInput").value);
+			let res = parseInt(document.getElementById("resInput").value);
+			const W = this.canvas.width, H = this.canvas.height, size = 170;
+			this.objects = [];
+			this.T = [];			// all triangles (global vertex indices)
+			this.triObj = [];		// object of each triangle
+			let offset = 0;
+			for (let o = 0; o < num; o++)
+			{
+				let m = makeMesh(res, size);
+				// base positions on an ellipse around the center; with only two objects the ellipse is
+				// smaller, so that the two objects regularly move into each other
+				let a = o / num * 2 * Math.PI;
+				let rx = num === 2 ? 130 : 260, ry = num === 2 ? 60 : 170;
+				this.objects.push({
+					local: m.verts, offset, size, color: OBJ_COLORS[o % OBJ_COLORS.length],
+					base: { x: W / 2 + rx * Math.cos(a), y: H / 2 + 50 + ry * Math.sin(a) },
+					amp: { x: 120 + 40 * Math.random(), y: 70 + 30 * Math.random() },
+					freq: { x: 0.25 + 0.2 * Math.random(), y: 0.3 + 0.2 * Math.random(), r: (Math.random() - 0.5) * 0.6 },
+					phase: Math.random() * 6.28
+				});
+				for (let t of m.tris) { this.T.push([t[0] + offset, t[1] + offset, t[2] + offset]); this.triObj.push(o); }
+				offset += m.verts.length;
+			}
+			this.time = 0;
+			this.updatePositions();
+			// average edge length (for the cell size)
+			let sum = 0, cnt = 0;
+			for (let t of this.T) for (let k = 0; k < 3; k++) { let a = this.P[t[k]], b = this.P[t[(k + 1) % 3]]; sum += Math.hypot(a.x - b.x, a.y - b.y); cnt++; }
+			this.avgEdge = sum / cnt;
+			this.updateCellSize();
+			// BVH for the refit method: built once for the initial configuration
+			this.refitTree = buildBVH(this.P, this.T);
+			this.selTri = null;
+			this.timeSums = {}; this.frames = 0;
+		}
+
+		updateCellSize() { this.l = parseFloat(document.getElementById("cellInput").value) * this.avgEdge; }
+
+		// procedural motion + deformation (a shear wave through each mesh)
+		updatePositions()
+		{
+			this.P = [];
+			let t = this.time;
+			for (let ob of this.objects)
+			{
+				let cx = ob.base.x + ob.amp.x * Math.sin(ob.freq.x * t + ob.phase);
+				let cy = ob.base.y + ob.amp.y * Math.sin(ob.freq.y * t + 1.7 * ob.phase);
+				let ang = ob.freq.r * t + ob.phase, ca = Math.cos(ang), sa = Math.sin(ang);
+				let A = this.deform * ob.size, k = 2 * Math.PI / ob.size;
+				for (let p of ob.local)
+				{
+					let x = p.x + A * Math.sin(k * p.y + 1.6 * t + ob.phase), y = p.y + A * Math.sin(k * p.x + 1.3 * t + ob.phase);
+					this.P.push({ x: cx + ca * x - sa * y, y: cy + sa * x + ca * y });
+				}
+			}
+		}
+
+		// run all four methods and measure their times
+		detect()
+		{
+			let timed = (name, f) => { let t0 = performance.now(), r = f(); this.timeSums[name] = (this.timeSums[name] || 0) + performance.now() - t0; return r; };
+			let P = this.P, T = this.T;
+			this.res = {};
+			this.res.brute = timed('brute', () => bruteForce(P, T));
+			this.res.rebuild = timed('rebuild', () => queryBVH(buildBVH(P, T), P, T));
+			this.res.refit = timed('refit', () => { refitBVH(this.refitTree, P, T); return queryBVH(this.refitTree, P, T); });
+			this.res.hash = timed('hash', () =>
+			{
+				if (!this.hash || this.hash.n !== this.tableSize) this.hash = new SpatialHash(this.tableSize);
+				this.hash.insert(P, this.l);
+				return this.hash.query(P, T, this.l);
+			});
+			this.frames++;
+			// BVH quality: summed box areas of the refitted tree relative to a freshly built tree
+			this.quality = totalArea(this.refitTree) / totalArea(buildBVH(P, T));
+			let r = this.res.hash;
+			this.hitVerts = new Set(r.pairs.map(p => p[0]));
+			this.hitTris = new Set(r.pairs.map(p => p[1]));
+			if (this.selTri === null) this.selTri = r.pairs.length ? r.pairs[0][1] : Math.floor(T.length / 2);
+			this.computeBucketInfo();
+		}
+
+		mainLoop()
+		{
+			if (this.animate) this.time += 1 / 60;
+			this.updatePositions();
+			this.detect();
+			this.drawScene();
+			this.drawHash();
+			this.updateStats();
+			if (this.frames >= 30) { this.avgTimes = {}; for (let k in this.timeSums) this.avgTimes[k] = this.timeSums[k] / this.frames; this.timeSums = {}; this.frames = 0; }
+			window.requestAnimationFrame(this.mainLoop.bind(this));
+		}
+
+		// occupancy of the hash table: used buckets, longest bucket, buckets with hash collisions
+		// (= vertices from more than one grid cell in the same bucket)
+		computeBucketInfo()
+		{
+			let h = this.hash, used = 0, maxB = 0, coll = 0;
+			this.collisionBucket = new Uint8Array(h.n);
+			for (let b = 0; b < h.n; b++)
+			{
+				let e = h.bucket(b);
+				if (!e.length) continue;
+				used++; maxB = Math.max(maxB, e.length);
+				let cells = new Set(e.map(v => cellOf(this.P[v].x, this.P[v].y, this.l).join(",")));
+				if (cells.size > 1) { coll++; this.collisionBucket[b] = 1; }
+			}
+			this.bucketInfo = { used, maxB, coll };
+		}
+
+		updateStats()
+		{
+			let set = (id, text) => { document.getElementById(id).textContent = text; };
+			let n = this.hash.n, { used, maxB, coll } = this.bucketInfo;
+			set("numElems", `${this.P.length} / ${this.T.length}`);
+			set("cellSize", `${this.l.toFixed(1)} px`);
+			set("tableSize", n);
+			set("loadFactor", (this.P.length / n).toFixed(2));
+			set("usedBuckets", `${used} (${(100 * used / n).toFixed(0)} %)`);
+			set("maxBucket", maxB);
+			set("collBuckets", coll);
+			set("bvhQuality", `×${this.quality.toFixed(2)}`);
+
+			let fmtN = x => x.toLocaleString("en-US");
+			let ref = this.res.brute.pairs.length;
+			for (let m of ['brute', 'rebuild', 'refit', 'hash'])
+			{
+				let row = document.getElementById("row_" + m), r = this.res[m];
+				row.querySelector(".b").textContent = m === 'brute' ? "—" : fmtN(r.boxTests);
+				row.querySelector(".e").textContent = fmtN(r.exact);
+				let c = row.querySelector(".c");
+				c.textContent = r.pairs.length;
+				c.style.color = r.pairs.length === ref ? "" : "#dc2626";
+				row.querySelector(".t").textContent = this.avgTimes && this.avgTimes[m] !== undefined ? this.avgTimes[m].toFixed(2) + " ms" : "…";
+			}
+		}
+
+		// ---- scene ----
+
+		drawScene()
+		{
+			let c = this.c, W = this.canvas.width, H = this.canvas.height, l = this.l, P = this.P;
+			c.clearRect(0, 0, W, H);
+			c.fillStyle = "#ffffff";
+			c.fillRect(0, 0, W, H);
+
+			// grid cells colored by their hash value: cells with the same color share a bucket
+			if (this.show.hashColors)
+				for (let j = 0; j * l < H; j++)
+					for (let i = 0; i * l < W; i++)
+					{
+						let hv = hashCell(i, j, this.hash.n);
+						c.fillStyle = `hsla(${(hv * 137.508) % 360}, 70%, 75%, 0.45)`;
+						c.fillRect(i * l, j * l, l, l);
+					}
+			if (this.show.grid && l >= 6)
+			{
+				c.strokeStyle = "rgba(100,116,139,0.25)";
+				c.lineWidth = 1;
+				c.beginPath();
+				for (let x = 0; x <= W; x += l) { c.moveTo(x, 0); c.lineTo(x, H); }
+				for (let y = 0; y <= H; y += l) { c.moveTo(0, y); c.lineTo(W, y); }
+				c.stroke();
+			}
+
+			// selected triangle: overlapped cells
+			let ex = this.selTri !== null ? this.hash.explain(P, this.T, this.selTri, l) : null;
+			this.explanation = ex;
+			if (ex)
+				for (let cell of ex.cells)
+				{
+					c.fillStyle = "rgba(250,204,21,0.30)";
+					c.fillRect(cell.i * l, cell.j * l, l, l);
+					c.strokeStyle = "#ca8a04"; c.lineWidth = 1.5;
+					c.strokeRect(cell.i * l, cell.j * l, l, l);
+				}
+
+			// meshes
+			this.T.forEach((t, ti) =>
+			{
+				let a = P[t[0]], b = P[t[1]], d = P[t[2]];
+				c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.lineTo(d.x, d.y); c.closePath();
+				let col = this.objects[this.triObj[ti]].color;
+				c.fillStyle = this.hitTris.has(ti) ? "rgba(220,38,38,0.45)" : col + "33";
+				c.fill();
+				c.strokeStyle = col + "aa";
+				c.lineWidth = 1;
+				c.stroke();
+			});
+			for (let v = 0; v < P.length; v++)
+			{
+				let hit = this.hitVerts.has(v);
+				c.fillStyle = hit ? "#dc2626" : "#334155";
+				c.beginPath(); c.arc(P[v].x, P[v].y, hit ? 4 : 2, 0, 2 * Math.PI); c.fill();
+			}
+
+			// BVH boxes of the refitted tree (to see how much they overlap)
+			if (this.show.bvh)
+			{
+				c.strokeStyle = "rgba(220,38,38,0.35)";
+				c.lineWidth = 1;
+				let rec = (node, depth) => { if (depth > 0 && depth <= 4) { let b = node.box; c.strokeRect(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY); } if (node.tri === undefined && depth < 4) { rec(node.left, depth + 1); rec(node.right, depth + 1); } };
+				rec(this.refitTree, 0);
+			}
+
+			// selected triangle: AABB and the candidate vertices with their status
+			if (ex)
+			{
+				let t = this.T[this.selTri], a = P[t[0]], b = P[t[1]], d = P[t[2]];
+				c.setLineDash([6, 4]);
+				c.strokeStyle = "#111827"; c.lineWidth = 1.5;
+				c.strokeRect(ex.box.minX, ex.box.minY, ex.box.maxX - ex.box.minX, ex.box.maxY - ex.box.minY);
+				c.setLineDash([]);
+				c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.lineTo(d.x, d.y); c.closePath();
+				c.strokeStyle = "#eab308"; c.lineWidth = 3.5; c.stroke();
+				for (let [v, status] of ex.cand)
+				{
+					let p = P[v];
+					c.strokeStyle = STATUS[status].color; c.lineWidth = 2.5;
+					c.beginPath(); c.arc(p.x, p.y, 7, 0, 2 * Math.PI); c.stroke();
+					if (status === 'hashcoll')
+					{
+						// the cell this vertex actually lies in
+						let [ci, cj] = cellOf(p.x, p.y, l);
+						c.setLineDash([4, 3]); c.lineWidth = 1.5;
+						c.strokeRect(ci * l, cj * l, l, l);
+						c.setLineDash([]);
+					}
+				}
+			}
+
+			// header
+			c.fillStyle = "rgba(255,255,255,0.85)";
+			c.fillRect(0, 0, W, 64);
+			c.fillStyle = "#111827";
+			c.font = "bold 19px Inter, sans-serif";
+			c.fillText(`Spatial hashing: cell size l = ${l.toFixed(1)} px, hash table with n = ${this.hash.n} buckets`, 14, 28);
+			c.font = "16px Inter, sans-serif";
+			c.fillStyle = "#374151";
+			c.fillText(`${this.res.hash.pairs.length} penetrating vertex–triangle pairs.  Yellow: selected triangle and the cells its AABB overlaps.`, 14, 52);
+
+			c.strokeStyle = "#999999"; c.lineWidth = 1;
+			c.strokeRect(0, 0, W, H);
+		}
+
+		// ---- hash table + explanation ----
+
+		drawHash()
+		{
+			let c = this.hc, W = this.hashCanvas.width, H = this.hashCanvas.height, h = this.hash, n = h.n;
+			c.clearRect(0, 0, W, H);
+			c.fillStyle = "#ffffff"; c.fillRect(0, 0, W, H);
+			c.strokeStyle = "#999999"; c.lineWidth = 1;
+			c.strokeRect(0, 0, W, H);
+
+			// buckets as a grid of small squares
+			const ax = 16, ay = 46, aw = 480, ah = 370;
+			let cols = Math.ceil(Math.sqrt(n * aw / ah)), rows = Math.ceil(n / cols);
+			let s = Math.max(2, Math.floor(Math.min(aw / cols, ah / rows)));
+			let maxB = Math.max(1, this.bucketInfo.maxB);
+			let readBuckets = new Set(this.explanation ? this.explanation.cells.map(cl => cl.h) : []);
+			c.fillStyle = "#111827"; c.font = "bold 17px Inter, sans-serif";
+			c.fillText(`Hash table: ${n} buckets`, ax, 28);
+			for (let b = 0; b < n; b++)
+			{
+				let x = ax + (b % cols) * s, y = ay + Math.floor(b / cols) * s;
+				let e = h.bucket(b);
+				let t = e.length / maxB;
+				c.fillStyle = e.length ? `rgb(${Math.round(219 - 190 * t)},${Math.round(234 - 160 * t)},${Math.round(254 - 70 * t)})` : "#f3f4f6";
+				c.fillRect(x, y, s - (s > 3 ? 1 : 0), s - (s > 3 ? 1 : 0));
+				if (s >= 5 && this.collisionBucket[b])
+				{
+					c.fillStyle = "#9333ea";
+					c.beginPath(); c.arc(x + s / 2 - 0.5, y + s / 2 - 0.5, Math.max(1.2, s / 5), 0, 2 * Math.PI); c.fill();
+				}
+			}
+			for (let b of readBuckets)
+			{
+				let x = ax + (b % cols) * s, y = ay + Math.floor(b / cols) * s;
+				c.strokeStyle = "#ea580c"; c.lineWidth = 2;
+				c.strokeRect(x - 1.5, y - 1.5, s + 2, s + 2);
+			}
+
+			// explanation of the query for the selected triangle
+			let ex = this.explanation;
+			let x = 520, y = 28, line = (text, color, bold, size = 15) => { c.font = (bold ? "bold " : "") + size + "px Inter, sans-serif"; c.fillStyle = color || "#374151"; c.fillText(text, x, y); y += 21; };
+			if (!ex) return;
+			line(`Query of triangle ${this.selTri} (object ${this.triObj[this.selTri] + 1})`, "#111827", true, 17);
+			y += 4;
+			let [i0, j0, i1, j1] = ex.range;
+			line("1. AABB → overlapped cells:", "#ca8a04", true);
+			line(`   i = ⌊x/l⌋ = ${i0} … ${i1},   j = ⌊y/l⌋ = ${j0} … ${j1}   (${ex.cells.length} cells)`);
+			line("2. Hash value of each cell → bucket:", "#ea580c", true);
+			let c0 = ex.cells[0];
+			line(`   h = ((i·p1) xor (j·p2)) mod n, e.g. for cell (${c0.i}, ${c0.j}):`, null, false, 14);
+			let raw = Math.imul(c0.i, P1) ^ Math.imul(c0.j, P2);
+			line(`   ((${c0.i}·${P1}) xor (${c0.j}·${P2})) mod ${n}`, null, false, 14);
+			line(`   = ${raw} mod ${n} = ${c0.h}`, null, false, 14);
+			for (let cl of ex.cells.slice(0, 6))
+				line(`   cell (${cl.i}, ${cl.j}) → bucket ${cl.h}: ${cl.count} vertices${cl.foreign ? `, ${cl.foreign} from other cells` : ""}`, cl.foreign ? "#9333ea" : null, false, 14);
+			if (ex.cells.length > 6) line(`   … ${ex.cells.length - 6} more cells`, "#6b7280", false, 14);
+			line("3. Test the vertices in these buckets:", "#111827", true);
+			let counts = {};
+			for (let s of ex.cand.values()) counts[s] = (counts[s] || 0) + 1;
+			for (let k of ['own', 'hashcoll', 'aabb', 'miss', 'hit'])
+				if (counts[k])
+				{
+					c.strokeStyle = STATUS[k].color; c.lineWidth = 2.5;
+					c.beginPath(); c.arc(x + 14, y - 5, 6, 0, 2 * Math.PI); c.stroke();
+					c.font = "14px Inter, sans-serif"; c.fillStyle = "#374151";
+					c.fillText(`${counts[k]} × ${STATUS[k].text}`, x + 28, y);
+					y += 21;
+				}
+		}
+
+		// ---- interaction: click selects a triangle ----
+
+		mouseDown(e)
+		{
+			const r = this.canvas.getBoundingClientRect();
+			let p = { x: (e.clientX - r.left) * this.canvas.width / r.width, y: (e.clientY - r.top) * this.canvas.height / r.height };
+			for (let ti = this.T.length - 1; ti >= 0; ti--)
+			{
+				let t = this.T[ti];
+				if (pointInTriangle(p, this.P[t[0]], this.P[t[1]], this.P[t[2]])) { this.selTri = ti; return; }
+			}
+		}
+	}
+
+	gui = new GUI();
+</script>
+
+</body>
+</html>

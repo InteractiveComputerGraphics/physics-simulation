@@ -95,6 +95,7 @@ I hope the examples and their documentation help you to learn something about th
 * [Bounding Volumes](examples/bounding_volumes.html)
 * [Sweep and prune for AABB overlap tests](examples/sweep_and_prune.html)
 * [Bounding Volume Hierarchy (BVH)](examples/bvh.html)
+* [Spatial Hashing](examples/spatial_hashing.html)
 
 ### Narrow Phase - Rigid Bodies
 
