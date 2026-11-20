@@ -31,7 +31,7 @@ For a deeper introduction to specific topics, see our tutorials:
 
 * [Position-Based Dynamics (PBD)](https://animation.rwth-aachen.de/publication/0553/)
 * [Smoothed Particle Hydrodynamics (SPH)](https://sph-tutorial.physics-simulation.org)
-* [Multiphysics simulation](https://animation.rwth-aachen.de/publication/05100/)
+* [Multiphysics simulation](https://multi.physics-simulation.org/)
 * [Further tutorials](https://www.physicsbasedanimation.com/resources-courses/)
 
 # Examples
